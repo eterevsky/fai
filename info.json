@@ -1,0 +1,11 @@
+{
+    "name": "ai",
+    "version": "0.1.0",
+    "title": "Aengus AI",
+    "author": "Oleg Eterevsky",
+    "contact": "",
+    "homepage": "",
+    "factorio_version": "0.16",
+    "dependencies": ["base >= 0.16"],
+    "description": "Plays for you."
+}
