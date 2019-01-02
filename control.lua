@@ -217,7 +217,8 @@ end
 -- Return all entities in the box with the side 2*radius.
 function Controller:entities(radius)
   local x, y = pos_unpack(self:position())
-  local box = {{x = x - radius, y = y - radius}, {x = x + radius, y = y + radius}}
+  if radius == nil then radius = 1000 end
+  local box = {{x - radius, y - radius}, {x + radius, y + radius}}
   return self.surface.find_entities(box)
 end
 
@@ -346,6 +347,10 @@ function Ai.new(controller)
   return ai
 end
 
+function Ai:start()
+  local entities = self.controller:entities()
+end
+
 function Ai:stop()
   self.controller:stop()
 end
@@ -394,10 +399,10 @@ end
 
 local function entities()
   local controller = get_controller()
-  local entities = controller:get_entities(10)
+  local entities = controller:entities(10)
   game.print("Entities in the 20x20 box:")
-  for i, e in ipairs(game.player.surface.find_entities(box)) do
-    game.print(i .. " " .. e.name .. " " .. serpent.line(e.position))
+  for _, e in ipairs(entities) do
+    log(e.name, e.position)
   end
 end
 
