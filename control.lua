@@ -1,3 +1,22 @@
+local function log(...)
+  local s = ""
+  local first = true
+  for _, arg in ipairs{...} do
+    if first then
+      first = false
+    else
+      s = s .. " "
+    end
+
+    if type(arg) == "string" or type(arg) == "number" then
+      s = s .. arg
+    else
+      s = s .. serpent.line(arg)
+    end
+  end
+  game.print(s)
+end
+
 local function bind(t, k)
   return function(...) return t[k](t, ...) end
 end
@@ -366,8 +385,8 @@ local function test_walk(args)
   local controller = get_controller()
   local pos = controller:position()
 
-  game.print("character_running_speed_modifier = " .. game.player.character_running_speed_modifier)
-  game.print("pos = " .. serpent.line(controller:position()))
+  log("character_running_speed_modifier =", game.player.character_running_speed_modifier)
+  log("pos = ", controller:position())
 
   local function continue(controller)
     local new_pos = controller:position()
@@ -375,17 +394,17 @@ local function test_walk(args)
     local dist = distance(pos, new_pos)
     if math.abs(dist - 19/128) > 0.001 then
       local character = controller:character()
-      game.print(serpent.line(character.prototype.collision_mask))
-      game.print(serpent.line(character.prototype.collision_box))
+      log(character.prototype.collision_mask)
+      log(character.prototype.collision_box)
       local entities = controller:entities(2)
       for i, e in ipairs(entities) do
         if e.name ~= "player" and not string.find(e.name, "ore") then
-          game.print(e.name .. " " .. serpent.line(e.position))
-          game.print(serpent.line(e.prototype.collision_mask))
-          game.print(serpent.line(e.prototype.collision_box))
+          log(e.name, e.position)
+          log(e.prototype.collision_mask)
+          log(e.prototype.collision_box)
         end
       end
-      game.print(serpent.line(pos) .. " -> " .. serpent.line(new_pos) .. " " .. serpent.line(delta) .. " " .. dist)
+      log(pos, "->", new_pos, delta, dist)
     end
     pos = new_pos
   end
