@@ -1,51 +1,47 @@
-local function pos_tostring(pos) 
-  return string.format("(%.2f, %.2f)", pos.x or pos[1], pos.y or pos[2])
-end
-
 local function bind(t, k)
   return function(...) return t[k](t, ...) end
 end
 
-local function pos_coords(pos)
-  x = pos.x or pos[1]
-  y = pos.y or pos[2]
+local function pos_unpack(pos)
+  local x = pos.x or pos[1]
+  local y = pos.y or pos[2]
   return x, y
 end
 
-local function norm_pos(pos)
+local function pos_norm(pos)
   if pos.x ~= nil then
     return pos
   end
   return {x = pos[1], y = pos[2]}
 end
 
-local function delta(p1, p2) 
-  x1, y1 = pos_coords(p1)
-  x2, y2 = pos_coords(p2)
+local function pos_delta(p1, p2) 
+  local x1, y1 = pos_unpack(p1)
+  local x2, y2 = pos_unpack(p2)
   return {x2 - x1, y2 - y1}
 end
 
 local function distance(p1, p2)
-  x1, y1 = pos_coords(p1)
-  x2, y2 = pos_coords(p2)
-  dx = x2 - x1
-  dy = y2 - y1
+  local x1, y1 = pos_unpack(p1)
+  local x2, y2 = pos_unpack(p2)
+  local dx = x2 - x1
+  local dy = y2 - y1
   return math.sqrt(dx * dx + dy * dy)
 end
 
-local function norm_box(box)
+local function box_norm(box)
   if box.left_top ~= nil then
     return box
   end
-  left_top = box.left_top or box[1]
-  right_bottom = box.right_bottom or box[2]
-  return {left_top = norm_pos(left_top), right_bottom = norm_pos(right_bottom)}
+  local left_top = box.left_top or box[1]
+  local right_bottom = box.right_bottom or box[2]
+  return {left_top = pos_norm(left_top), right_bottom = pos_norm(right_bottom)}
 end
 
 -- Checks whether a point falls within bounding box
 local function box_contains(box, pos)
-  local box = norm_box(box)
-  local pos = norm_pos(pos)
+  local box = box_norm(box)
+  local pos = pos_norm(pos)
 
   return box.left_top.x <= pos.x and box.left_top.y <= pos.y and
          box.right_bottom.x >= pos.x and box.right_bottom.y >= pos.y
@@ -53,8 +49,8 @@ end
 
 -- Find a point, that is inside bounding box 1, but not inside bounding box 2.
 local function selection_diff(box1, box2)
-  local box1 = norm_box(box1)
-  local box2 = norm_box(box2)
+  local box1 = box_norm(box1)
+  local box2 = box_norm(box2)
 
   local x = (box1.right_bottom.x + box1.left_top.x) / 2
   if box1.left_top.x < box2.left_top.x then
@@ -105,7 +101,7 @@ local function test_selection_diff()
 end
 
 local function padding_box(center, padding)
-  center = norm_pos(center)
+  center = pos_norm(center)
   return {{center.x - padding, center.y - padding}, {center.x + padding, center.y + padding}}
 end
 
@@ -121,12 +117,25 @@ function Controller.new(player)
   controller.surface = player.surface
   controller.action_state = {type = nil}
   controller.old_action_state = nil
+  controller.listeners = {}
   return controller
 end
 
 -- Get current position
 function Controller:position()
-  return game.player.position
+  return self.player.position
+end
+
+-- Get player character entity
+function Controller:character()
+  return self.player.character
+end
+
+-- Return all entities in the box with the side 2*radius.
+function Controller:entities(radius)
+  local x, y = pos_unpack(self:position())
+  local box = {{x = x - radius, y = y - radius}, {x = x + radius, y = y + radius}}
+  return self.surface.find_entities(box)
 end
 
 -- Stop any running action
@@ -203,7 +212,32 @@ function Controller:walk(dx, dy)
   end
 end
 
+-- Assuming that the character is in the position pos, simulate walking for one tick in the
+-- direction (dx, dy). Returns the new position.
+function Controller:simulate_walk(pos, dx, dy)
+end
+
+function Controller:add_listener(callback)
+  table.insert(self.listeners, callback)
+end
+
+function Controller:remove_all_listeners()
+  self.listeners = {}
+end
+
+function Controller:remove_listener(callback)
+  for i, e in ipairs(self.listeners) do
+    if e == callback then
+      table.remove(self.listeners, i)
+      break
+    end
+  end
+end
+
 function Controller:on_tick()
+  for _, listener in ipairs(self.listeners) do
+    listener(self)
+  end
   self:update()
 end
 
@@ -270,6 +304,7 @@ end
 
 local function stop()
   get_ai():stop()
+  get_controller():remove_all_listeners()
 end
 
 local function pos()
@@ -280,9 +315,8 @@ end
 
 local function entities()
   local controller = get_controller()
-  local pos = controller:position()
-  local box = {{x = pos.x - 10, y = pos.y - 10}, {x = pos.x + 10, y = pos.y + 10}}
-  game.print("Entities in the bounding box " .. serpent.line(box))
+  local entities = controller:get_entities(10)
+  game.print("Entities in the 20x20 box:")
   for i, e in ipairs(game.player.surface.find_entities(box)) do
     game.print(i .. " " .. e.name .. " " .. serpent.line(e.position))
   end
@@ -292,7 +326,7 @@ local function all_entities()
   local count = 0
   local type_count = {}
   local p1, p2 = {x = 0, y = 0}, {x = 0, y = 0}
-  for _, entity in ipairs(game.player.surface.find_entities()) do
+  for _, entity in ipairs(get_controller():entities()) do
     count = count + 1
     type_count[entity.name] = (type_count[entity.name] or 0) + 1
 
@@ -328,12 +362,44 @@ local function walk(args)
   get_controller():walk(x, y)
 end
 
+local function test_walk(args)
+  local controller = get_controller()
+  local pos = controller:position()
+
+  game.print("character_running_speed_modifier = " .. game.player.character_running_speed_modifier)
+  game.print("pos = " .. serpent.line(controller:position()))
+
+  local function continue(controller)
+    local new_pos = controller:position()
+    local delta = pos_delta(pos, new_pos)
+    local dist = distance(pos, new_pos)
+    if math.abs(dist - 19/128) > 0.001 then
+      local character = controller:character()
+      game.print(serpent.line(character.prototype.collision_mask))
+      game.print(serpent.line(character.prototype.collision_box))
+      local entities = controller:entities(2)
+      for i, e in ipairs(entities) do
+        if e.name ~= "player" and not string.find(e.name, "ore") then
+          game.print(e.name .. " " .. serpent.line(e.position))
+          game.print(serpent.line(e.prototype.collision_mask))
+          game.print(serpent.line(e.prototype.collision_box))
+        end
+      end
+      game.print(serpent.line(pos) .. " -> " .. serpent.line(new_pos) .. " " .. serpent.line(delta) .. " " .. dist)
+    end
+    pos = new_pos
+  end
+
+  controller:add_listener(continue)
+  controller:walk(1, 0)
+end
+
 local function test()
   test_selection_diff()
 end
 
 commands.add_command("start", "Give AI control over the player", start)
-commands.add_command("stop", "Stops AI", stop)
+commands.add_command("stop", "Stops AI and any running actions in Controller", stop)
 commands.add_command("pos", "Show current position", pos)
 commands.add_command("entities", "Show entities around", entities)
 commands.add_command("all_entities", "Show all known entities", all_entities)
@@ -341,3 +407,4 @@ commands.add_command("recipes", "Show all known recipes", recipes)
 commands.add_command("mine", "Mine the nearest minable tile", mine)
 commands.add_command("walk", "Walk in the direction given by two relative coordinates", walk)
 commands.add_command("test", "Run unit tests", test)
+commands.add_command("test-walk", "Investigate how walking works", test_walk)
