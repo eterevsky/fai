@@ -21,6 +21,14 @@ local function bind(t, k)
   return function(...) return t[k](t, ...) end
 end
 
+local function table_size(t)
+  local count = 0
+  for _, _ in pairs(t) do
+    count = count + 1
+  end
+  return count
+end
+
 local function sign(x)
   if x > 0 then
     return 1
@@ -53,12 +61,32 @@ local function pos_delta(p1, p2)
   return {x2 - x1, y2 - y1}
 end
 
-local function distance(p1, p2)
+local RADIX = 2 ^ 20
+
+local function pos_enc(pos)
+  local x, y = pos_unpack(pos)
+  local x_scaled = math.floor(x * 128)
+  local y_scaled = math.floor(y * 128)
+
+  assert(x_scaled < RADIX and y_scaled < RADIX)
+
+  return x_scaled + RADIX * y_scaled
+end
+
+local function l2_distance(p1, p2)
   local x1, y1 = pos_unpack(p1)
   local x2, y2 = pos_unpack(p2)
   local dx = x2 - x1
   local dy = y2 - y1
   return math.sqrt(dx * dx + dy * dy)
+end
+
+local function linf_distance(p1, p2)
+  local x1, y1 = pos_unpack(p1)
+  local x2, y2 = pos_unpack(p2)
+  local dx = x2 - x1
+  local dy = y2 - y1
+  return math.max(math.abs(dx), math.abs(dy))
 end
 
 local function box_norm(box)
@@ -155,7 +183,7 @@ local function test_selection_diff()
   assert(box_contains(box1, p))
   assert(not box_contains(box2, p))
 
-  game.print("test_selection_diff ok")
+  log("test_selection_diff ok")
 end
 
 local DIR_TO_DELTA = {}
@@ -222,9 +250,18 @@ function Controller:entities(radius)
   return self.surface.find_entities(box)
 end
 
+function Controller:entities_filtered(filters)
+  return self.surface.find_entities_filtered(filters)
+end
+
+function Controller:stop_actions()
+  self.action_state = {action = nil}
+end
+
 -- Stop any running action
 function Controller:stop()
-  self.action_state = {action = nil}
+  self:stop_actions()
+  self:remove_all_listeners()
 end
 
 -- Mine position
@@ -235,15 +272,9 @@ function Controller:mine()
   local box = box_padding(pos, reach_distance)
   local ore_entity, ore_point
 
-  for i, e in ipairs(self.surface.find_entities(box)) do
-    if e.minable and player.can_reach_entity(e) and e.name ~= "player" then
-      selection_point = selection_diff(e.selection_box, player.character.selection_box)
-      if selection_point then
-        game.print(e.name .. " " .. serpent.line(e.position))
-        ore_entity = e
-        ore_point = selection_point
-        break
-      end
+  for _, e in ipairs(self.surface.find_entities(box)) do
+    if self:is_minable(e) then
+      ore_entity = e
     end
   end
 
@@ -253,8 +284,16 @@ function Controller:mine()
   end
 
   log("Found ore entity:", ore_entity.name, ore_entity.position)
-                      
-  self.action_state = {action = "mining", position = selection_point, entity = ore_entity}
+  self:mine_entity(ore_entity)
+end
+
+function Controller:is_minable(entity)
+  return entity.minable and self.player.can_reach_entity(entity) and entity.name ~= "player"
+end
+
+function Controller:mine_entity(entity)
+  local selection_point = selection_diff(entity.selection_box, self.player.character.selection_box)
+  self.action_state = {action = "mining", position = selection_point, entity = entity}
 end
 
 -- Walk one step in given direction
@@ -321,6 +360,10 @@ function Controller:on_tick()
   self:update()
 end
 
+function Controller:current_action()
+  return self.action_state.action
+end
+
 -- Keep doing whatever we are doing (i.e. walking, mining)
 function Controller:update()
   if self.old_action_state ~= self.action_state then
@@ -335,24 +378,285 @@ function Controller:update()
   end
 end
 
+-- Binary heap-based priority queue.
+
+local PriorityQueue = {}
+PriorityQueue.__index = PriorityQueue
+
+function PriorityQueue.new()
+  local self = {}
+  setmetatable(self, PriorityQueue)
+  self.heap = {}
+  return self
+end
+
+-- Adds an entry to the priority queue.
+function PriorityQueue:push(entry)
+  table.insert(self.heap, entry)
+  self:_sift_down(#self.heap)
+end
+
+function PriorityQueue:empty()
+  return next(self.heap) == nil
+end
+
+function PriorityQueue:pop()
+  local last = table.remove(self.heap)
+  if not self:empty() then
+    local ret = self.heap[1]
+    self.heap[1] = last
+    self:_sift_up(1)
+    return ret
+  else
+    return last
+  end
+end
+
+function PriorityQueue:size()
+  return #self.heap
+end
+
+function PriorityQueue:_sift_down(idx)
+  while idx > 1 do
+    local parent_idx = math.floor(idx / 2)
+
+    if self.heap[parent_idx] < self.heap[idx] then return end
+
+    local temp = self.heap[idx]
+    self.heap[idx] = self.heap[parent_idx]
+    self.heap[parent_idx] = temp
+
+    idx = parent_idx    
+  end
+end
+
+function PriorityQueue:_sift_up(idx)
+  while idx < #self.heap do
+    local left, right = 2 * idx, 2 * idx + 1
+    if (left > #self.heap or self.heap[idx] < self.heap[left]) and
+       (right > #self.heap or self.heap[idx] < self.heap[right]) then
+      return
+    end
+    if right <= #self.heap and self.heap[right] < self.heap[left] then
+      local temp = self.heap[right]
+      self.heap[right] = self.heap[idx]
+      self.heap[idx] = temp
+      idx = right
+    else
+      local temp = self.heap[left]
+      self.heap[left] = self.heap[idx]
+      self.heap[idx] = temp
+      idx = left
+    end
+  end
+end
+
+local function test_priority_queue()
+  local queue = PriorityQueue.new()
+  queue:push(2)
+  queue:push(1)
+  assert(queue:pop() == 1)
+  queue:push(3)
+  queue:push(4)
+  assert(queue:pop() == 2)
+  queue:push(-1)
+  assert(queue:pop() == -1)
+  assert(queue:pop() == 3)
+  assert(queue:size() == 1)
+
+  log("test_priority_queue ok")
+end
+
+local PathNode = {}
+PathNode.__index = PathNode
+
+-- steps is the number of steps already taken
+-- cost is the sum of `steps` and the low estimate for the remaining part
+function PathNode.new(pos, prev_enc, dir, steps, cost)
+  local self = {
+    pos = pos,
+    prev_enc = prev_enc,
+    dir = dir,
+    steps = steps,
+    cost = cost,
+  }
+  setmetatable(self, PathNode)
+  return self
+end
+
+PathNode.__eq = function(a, b)
+  return a.cost == b.cost
+end
+
+PathNode.__lt = function(a, b)
+  return a.cost < b.cost
+end
+
+PathNode.__le = function(a, b)
+  return a.cost <= b.cost
+end
+
 -- Ai makes the decisions what to do and controls the character through the controller object.
 
 local Ai = {}
 Ai.__index = Ai
 
 function Ai.new(controller)
-  local ai = {}
-  setmetatable(ai, Ai)
-  ai.controller = controller
-  return ai
+  local self = {}
+  setmetatable(self, Ai)
+  self.controller = controller
+  return self
 end
 
 function Ai:start()
-  local entities = self.controller:entities()
+  self.path = {}
+  
+  local coal_entities = self.controller:entities_filtered{name = "coal"}
+  log("Found", #coal_entities, "coal entities")
+  local goals = {}
+  for _, e in ipairs(coal_entities) do
+    table.insert(goals, e.position)
+  end
+  self.path = self:find_path(goals, 2.5)
+
+  self.controller:add_listener(bind(self, 'update'))
 end
 
 function Ai:stop()
   self.controller:stop()
+end
+
+-- Low estimate for the number of ticks to reach a point within the given distance from any of the
+-- goals.
+function Ai:_estimate_steps(pos, goals, distance)
+  local pos = pos_norm(pos)
+  local speed = 19 / 128
+  local min_steps = 1E9
+
+  for _, goal in ipairs(goals) do
+    local goal = pos_norm(goal)
+    local dist = math.max(math.abs(pos.x - goal.x), math.abs(pos.y - goal.y))
+    local steps = math.ceil((dist - distance) / speed)
+    -- if steps == 0 and l2_distance(pos, goal) > distance then
+    --   -- If we counted the distance as 0, but we can't actually reach the goal, set steps to 1.
+    --   steps = 1
+    -- end
+    if steps < min_steps then min_steps = steps end
+  end
+
+  return min_steps
+end
+
+-- A* search that finds the fastest path to any position from goals, ending within the distance of
+-- it.
+function Ai:find_path(goals, distance)
+  local queue = PriorityQueue.new()
+  local start_pos = self.controller:position()
+  local start_cost = self:_estimate_steps(start_pos, goals, distance)
+  log("Initial cost estimation:", start_cost)
+
+  local start_node = PathNode.new(start_pos, nil, nil, 0, start_cost)
+  queue:push(start_node)
+
+  -- visited position -> PathNode
+  local visited = {}
+  local last_node = nil
+  local counter = 0
+
+  while not queue:empty() and counter < 10000 do
+    local node = queue:pop()
+    -- log("Expanding", node)
+    assert(node ~= nil)
+    local enc = pos_enc(node.pos)
+    if visited[enc] ~= nil then goto continue end
+    visited[enc] = node
+    counter = counter + 1
+
+    local current_pos = node.pos
+    local current_steps = node.steps
+
+    for _, dir in ipairs(DIRECTIONS) do
+      local new_pos = self.controller:simulate_walk(current_pos, dir)
+      if new_pos ~= current_pos then
+        local new_cost = self:_estimate_steps(new_pos, goals, distance)
+        local new_node = PathNode.new(new_pos, enc, dir, current_steps + 1,
+                                      new_cost + current_steps + 1)
+        if new_cost == 0 then
+          last_node = new_node
+          goto found
+        end
+
+        queue:push(new_node)
+      end
+    end
+
+    ::continue::
+  end
+
+  ::found::
+  log("Have", table_size(visited), "visited nodes and", queue:size(), "nodes in queue")
+  if last_node == nil then
+    log("Path not found")
+    local lo_cost = 100000
+    local closest_node = nil
+    for _, node in pairs(visited) do
+      if node.cost - node.steps < lo_cost then
+        lo_cost = node.cost - node.steps
+        closest_node = node
+      end
+    end
+    log("Closest node:", closest_node)
+    return {}
+  end
+  
+  local path = {}
+  local node = last_node
+
+  while node ~= nil and node.dir ~= nil do
+    table.insert(path, node.dir)
+    node = visited[node.prev_enc]
+  end
+
+  log("Found path:", path)
+  log("Steps:", #path)
+  log("Steps in last node:", last_node.steps)
+
+  return path
+end
+
+function Ai:update()
+  if self.controller:current_action() == "mining" then return end
+
+  local box = box_padding(self.controller:position(), 3)
+  local coal_entities = self.controller:entities_filtered{area=box, name = "coal"}
+  local ore_entity = nil
+  for _, e in ipairs(coal_entities) do
+    if self.controller:is_minable(e) then
+      ore_entity = e
+      break
+    end
+  end
+
+  if ore_entity ~= nil then
+    log("Reached ore entity", ore_entity.name, ore_entity.position)
+    log("Remaining steps:", self.path)
+    log("L2 distance to entity:", l2_distance(self.controller:position(), ore_entity.position))
+    log("Linf distance to entity:", linf_distance(self.controller:position(), ore_entity.position))
+    self.path = {}
+    self.controller:mine_entity(ore_entity)
+    return
+  end
+
+  -- Path works as a stack, with the first direction on top.
+  if #self.path == 0 then
+    -- self.controller:mine()
+    -- self.controller:stop_actions()
+    log("Finished walk, but haven't found any ore")
+    self.controller:stop_actions()
+    return
+  end
+  local step = table.remove(self.path)
+  self.controller:walk(step)
 end
 
 -- Controller and Ai singletons
@@ -412,7 +716,8 @@ local function all_entities()
   local p1, p2 = {x = 0, y = 0}, {x = 0, y = 0}
   for _, entity in ipairs(get_controller():entities()) do
     count = count + 1
-    type_count[entity.name] = (type_count[entity.name] or 0) + 1
+    type_name = entity.name .. " " .. entity.type
+    type_count[type_name] = (type_count[type_name] or 0) + 1
 
     p1.x = math.min(p1.x, entity.position.x)
     p1.y = math.min(p1.y, entity.position.y)
@@ -454,7 +759,7 @@ local function test_walk(args)
   local function continue(controller)
     local new_pos = controller:position()
     
-    if distance(new_pos, expected_pos) > 0.001 then
+    if l2_distance(new_pos, expected_pos) > 0.001 then
       log(pos, "->", new_pos)
       log("expected:", expected_pos)
     end
@@ -472,6 +777,7 @@ end
 
 local function test()
   test_selection_diff()
+  test_priority_queue()
 end
 
 commands.add_command("start", "Give AI control over the player", start)
