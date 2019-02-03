@@ -65,8 +65,8 @@ local RADIX = 2 ^ 20
 
 local function pos_enc(pos)
   local x, y = pos_unpack(pos)
-  local x_scaled = math.floor(x * 128)
-  local y_scaled = math.floor(y * 128)
+  local x_scaled = math.floor(x * 256)
+  local y_scaled = math.floor(y * 256)
 
   assert(x_scaled < RADIX and y_scaled < RADIX)
 
@@ -309,8 +309,13 @@ function Controller:simulate_walk_no_collisions(pos, dir)
   local posx, posy = pos_unpack(pos)
   local dx, dy = table.unpack(DIR_TO_DELTA[dir])
   -- Default speed. TODO: Take into account the type of surface and speed bonuses.
-  local speed = 19 / 128
-  return {posx + dx * speed, posy + dy * speed}
+  local speed = 38 / 256
+  local diag_speed = 27 / 256
+  if dx == 0 or dy == 0 then
+    return {posx + dx * speed, posy + dy * speed}
+  else
+    return {posx + dx * diag_speed, posy + dy * diag_speed}
+  end
 end
 
 -- Assuming that the character is in the position pos, simulate walking for one tick in the
@@ -517,7 +522,7 @@ function Ai:start()
   for _, e in ipairs(coal_entities) do
     table.insert(goals, e.position)
   end
-  self.path = self:find_path(goals, 2.5)
+  self.path = self:find_path(goals, 2.8)
 
   self.controller:add_listener(bind(self, 'update'))
 end
@@ -530,17 +535,18 @@ end
 -- goals.
 function Ai:_estimate_steps(pos, goals, distance)
   local pos = pos_norm(pos)
-  local speed = 19 / 128
+  local speed = 38 / 256
+  local diag_speed = 27 / 256
   local min_steps = 1E9
+  local sqrt2 = math.sqrt(2)
 
   for _, goal in ipairs(goals) do
     local goal = pos_norm(goal)
-    local dist = math.max(math.abs(pos.x - goal.x), math.abs(pos.y - goal.y))
+    local dist = l2_distance(pos, goal)
+    if dist < distance then return 0 end
+
     local steps = math.ceil((dist - distance) / speed)
-    -- if steps == 0 and l2_distance(pos, goal) > distance then
-    --   -- If we counted the distance as 0, but we can't actually reach the goal, set steps to 1.
-    --   steps = 1
-    -- end
+    assert(steps > 0)
     if steps < min_steps then min_steps = steps end
   end
 
@@ -627,10 +633,26 @@ end
 function Ai:update()
   if self.controller:current_action() == "mining" then return end
 
+  if self.prediction ~= nil then
+    if linf_distance(self.prediction.expected_pos, self.controller:position()) > 0 then
+      log(self.prediction)
+      log("Actual position:", self.controller:position())
+      log("Expected delta:", pos_delta(self.prediction.expected_pos, self.prediction.current_pos))
+      log("Actual delta:", pos_delta(self.controller:position(), self.prediction.current_pos))
+      self.prediction = nil
+      self:stop()
+      return
+    end
+    self.prediction = nil
+  end
+
   local box = box_padding(self.controller:position(), 3)
   local coal_entities = self.controller:entities_filtered{area=box, name = "coal"}
   local ore_entity = nil
   for _, e in ipairs(coal_entities) do
+    log("L2 distance to entity:",
+        l2_distance(self.controller:position(), e.position),
+        "Linf distance to entity:", linf_distance(self.controller:position(), e.position))
     if self.controller:is_minable(e) then
       ore_entity = e
       break
@@ -652,10 +674,20 @@ function Ai:update()
     -- self.controller:mine()
     -- self.controller:stop_actions()
     log("Finished walk, but haven't found any ore")
-    self.controller:stop_actions()
+    self:stop()
     return
   end
+
   local step = table.remove(self.path)
+  local current_pos = self.controller:position()
+  local expected_pos = self.controller:simulate_walk(current_pos, step)
+
+  self.prediction = {
+    step = step,
+    current_pos = current_pos,
+    expected_pos = expected_pos
+  }
+
   self.controller:walk(step)
 end
 
