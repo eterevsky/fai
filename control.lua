@@ -501,6 +501,133 @@ PathNode.__le = function(a, b)
   return a.cost <= b.cost
 end
 
+-- Pathfinder implements walking to reach certain goals.
+local Pathfinder = {}
+Pathfinder.__index = Pathfinder
+
+function Pathfinder.new(controller)
+  local self = {}
+  setmetatable(self, Pathfinder)
+  self.controller = controller
+  self.goals = {}
+  self.distance = 1.0
+  -- Encoded position -> distance to goals
+  self.steps_cache = {}
+  return self
+end
+
+-- Low estimate for the number of ticks to reach a point within the given distance from any of the
+-- goals.
+function Pathfinder:_estimate_steps(pos)
+  local enc = pos_enc(pos)
+  local cached_steps = self.steps_cache[enc]
+  if cached_steps ~= nil then
+    self.cache_hits = self.cache_hits + 1
+    return cached_steps
+  end
+
+  local pos = pos_norm(pos)
+  local speed = 38 / 256
+  local diag_speed = 27 / 256
+  local min_steps = 1E9
+  local sqrt2 = math.sqrt(2)
+
+  for _, goal in ipairs(self.goals) do
+    local goal = pos_norm(goal)
+    local dist = l2_distance(pos, goal)
+    if dist < self.distance then return 0 end
+
+    local steps = math.ceil((dist - self.distance) / speed)
+    assert(steps > 0)
+    if steps < min_steps then min_steps = steps end
+  end
+
+  self.cache_misses = self.cache_misses + 1
+  self.steps_cache[enc] = min_steps
+
+  return min_steps
+end
+
+function Pathfinder:set_goals(goals, distance)
+  self.goals = goals
+  self.distance = distance
+  self.steps_cache = {}
+end
+
+-- A* search that finds the fastest path to any position from goals, ending within the distance of
+-- it.
+function Pathfinder:next_step()
+  self.cache_hits = 0
+  self.cache_misses = 0
+  local queue = PriorityQueue.new()
+  local start_pos = self.controller:position()
+  local start_cost = self:_estimate_steps(start_pos)
+
+  local start_node = PathNode.new(start_pos, nil, nil, 0, start_cost)
+  queue:push(start_node)
+
+  -- visited position -> PathNode
+  local visited = {}
+  local counter = 0
+
+  local closest_node = nil
+  local min_cost = start_cost
+
+  while not queue:empty() and counter < 64 and min_cost > 0 do
+    local node = queue:pop()
+    assert(node ~= nil)
+    local enc = pos_enc(node.pos)
+    if visited[enc] ~= nil then goto continue end
+    visited[enc] = node
+    counter = counter + 1
+
+    for _, dir in ipairs(DIRECTIONS) do
+      local new_pos = self.controller:simulate_walk(node.pos, dir)
+      if new_pos ~= node.pos then
+        local new_cost = self:_estimate_steps(new_pos)
+        local new_node = PathNode.new(new_pos, enc, dir, node.steps + 1,
+                                      new_cost + node.steps + 1)
+        if new_cost < min_cost then
+          closest_node = new_node
+          min_cost = new_cost
+          -- log("New closest node:", closest_node, " distance: ", min_cost)
+        end
+        if new_cost == 0 then break end
+
+        queue:push(new_node)
+      end
+    end
+
+    ::continue::
+  end
+
+  if closest_node == nil then
+    log("Didn't find any path")
+    return nil
+  end
+
+  local node = closest_node
+  local steps = 0
+  local next_dir = nil
+  local next_pos = nil
+  while node ~= nil and node.dir ~= nil do
+    next_pos = node.pos
+    next_dir = node.dir
+    node = visited[node.prev_enc]
+    steps = steps + 1
+  end
+
+  -- log("Found", steps, "steps + cost of last node: ", min_cost, " = initial estimation + ",
+  --     min_cost + steps - start_cost, "(", self.cache_hits, "/", self.cache_misses, ")")
+
+  return {
+    current_pos = start_pos,
+    expected_pos = next_pos,
+    step = next_dir
+  }
+end
+
+
 -- Ai makes the decisions what to do and controls the character through the controller object.
 
 local Ai = {}
@@ -510,128 +637,31 @@ function Ai.new(controller)
   local self = {}
   setmetatable(self, Ai)
   self.controller = controller
+  self.pathfinder = Pathfinder.new(controller)
   return self
 end
 
 function Ai:start()
-  self.path = {}
-  
+  -- self.start_clock = os.clock()
+  self.updates = 0
+  self.controller:add_listener(bind(self, 'update'))
+
   local coal_entities = self.controller:entities_filtered{name = "coal"}
   log("Found", #coal_entities, "coal entities")
   local goals = {}
   for _, e in ipairs(coal_entities) do
     table.insert(goals, e.position)
   end
-  self.path = self:find_path(goals, 2.8)
-
-  self.controller:add_listener(bind(self, 'update'))
+  self.pathfinder:set_goals(goals, 2.8)
 end
 
 function Ai:stop()
   self.controller:stop()
 end
 
--- Low estimate for the number of ticks to reach a point within the given distance from any of the
--- goals.
-function Ai:_estimate_steps(pos, goals, distance)
-  local pos = pos_norm(pos)
-  local speed = 38 / 256
-  local diag_speed = 27 / 256
-  local min_steps = 1E9
-  local sqrt2 = math.sqrt(2)
-
-  for _, goal in ipairs(goals) do
-    local goal = pos_norm(goal)
-    local dist = l2_distance(pos, goal)
-    if dist < distance then return 0 end
-
-    local steps = math.ceil((dist - distance) / speed)
-    assert(steps > 0)
-    if steps < min_steps then min_steps = steps end
-  end
-
-  return min_steps
-end
-
--- A* search that finds the fastest path to any position from goals, ending within the distance of
--- it.
-function Ai:find_path(goals, distance)
-  local queue = PriorityQueue.new()
-  local start_pos = self.controller:position()
-  local start_cost = self:_estimate_steps(start_pos, goals, distance)
-  log("Initial cost estimation:", start_cost)
-
-  local start_node = PathNode.new(start_pos, nil, nil, 0, start_cost)
-  queue:push(start_node)
-
-  -- visited position -> PathNode
-  local visited = {}
-  local last_node = nil
-  local counter = 0
-
-  while not queue:empty() and counter < 10000 do
-    local node = queue:pop()
-    -- log("Expanding", node)
-    assert(node ~= nil)
-    local enc = pos_enc(node.pos)
-    if visited[enc] ~= nil then goto continue end
-    visited[enc] = node
-    counter = counter + 1
-
-    local current_pos = node.pos
-    local current_steps = node.steps
-
-    for _, dir in ipairs(DIRECTIONS) do
-      local new_pos = self.controller:simulate_walk(current_pos, dir)
-      if new_pos ~= current_pos then
-        local new_cost = self:_estimate_steps(new_pos, goals, distance)
-        local new_node = PathNode.new(new_pos, enc, dir, current_steps + 1,
-                                      new_cost + current_steps + 1)
-        if new_cost == 0 then
-          last_node = new_node
-          goto found
-        end
-
-        queue:push(new_node)
-      end
-    end
-
-    ::continue::
-  end
-
-  ::found::
-  log("Have", table_size(visited), "visited nodes and", queue:size(), "nodes in queue")
-  if last_node == nil then
-    log("Path not found")
-    local lo_cost = 100000
-    local closest_node = nil
-    for _, node in pairs(visited) do
-      if node.cost - node.steps < lo_cost then
-        lo_cost = node.cost - node.steps
-        closest_node = node
-      end
-    end
-    log("Closest node:", closest_node)
-    return {}
-  end
-  
-  local path = {}
-  local node = last_node
-
-  while node ~= nil and node.dir ~= nil do
-    table.insert(path, node.dir)
-    node = visited[node.prev_enc]
-  end
-
-  log("Found path:", path)
-  log("Steps:", #path)
-  log("Steps in last node:", last_node.steps)
-
-  return path
-end
-
 function Ai:update()
-  if self.controller:current_action() == "mining" then return end
+  -- self.updates = self.updates + 1
+  -- if self.controller:current_action() == "mining" then return end
 
   if self.prediction ~= nil then
     if linf_distance(self.prediction.expected_pos, self.controller:position()) > 0 then
@@ -650,9 +680,9 @@ function Ai:update()
   local coal_entities = self.controller:entities_filtered{area=box, name = "coal"}
   local ore_entity = nil
   for _, e in ipairs(coal_entities) do
-    log("L2 distance to entity:",
-        l2_distance(self.controller:position(), e.position),
-        "Linf distance to entity:", linf_distance(self.controller:position(), e.position))
+    -- log("L2 distance to entity:",
+    --     l2_distance(self.controller:position(), e.position),
+    --     "Linf distance to entity:", linf_distance(self.controller:position(), e.position))
     if self.controller:is_minable(e) then
       ore_entity = e
       break
@@ -660,35 +690,26 @@ function Ai:update()
   end
 
   if ore_entity ~= nil then
+    -- local mine_clock = os.clock()
+    -- log(mine_clock - self.start_clock, "seconds per", self.updates, "updates =",
+    --     (mine_clock - self.start_clock) / self.updates, "s per update")
     log("Reached ore entity", ore_entity.name, ore_entity.position)
-    log("Remaining steps:", self.path)
     log("L2 distance to entity:", l2_distance(self.controller:position(), ore_entity.position))
     log("Linf distance to entity:", linf_distance(self.controller:position(), ore_entity.position))
-    self.path = {}
     self.controller:mine_entity(ore_entity)
     return
   end
 
+  self.prediction = self.pathfinder:next_step()
+
   -- Path works as a stack, with the first direction on top.
-  if #self.path == 0 then
-    -- self.controller:mine()
-    -- self.controller:stop_actions()
+  if self.prediction == nil then
     log("Finished walk, but haven't found any ore")
     self:stop()
     return
   end
 
-  local step = table.remove(self.path)
-  local current_pos = self.controller:position()
-  local expected_pos = self.controller:simulate_walk(current_pos, step)
-
-  self.prediction = {
-    step = step,
-    current_pos = current_pos,
-    expected_pos = expected_pos
-  }
-
-  self.controller:walk(step)
+  self.controller:walk(self.prediction.step)
 end
 
 -- Controller and Ai singletons
