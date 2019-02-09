@@ -1,33 +1,6 @@
-local function log(...)
-  local s = ""
-  local first = true
-  for _, arg in ipairs{...} do
-    if first then
-      first = false
-    else
-      s = s .. " "
-    end
-
-    if type(arg) == "string" or type(arg) == "number" then
-      s = s .. arg
-    else
-      s = s .. serpent.line(arg)
-    end
-  end
-  game.print(s)
-end
-
-local function bind(t, k)
-  return function(...) return t[k](t, ...) end
-end
-
-local function table_size(t)
-  local count = 0
-  for _, _ in pairs(t) do
-    count = count + 1
-  end
-  return count
-end
+local util = require "util"
+local log = util.log
+local pos = require "pos"
 
 local function sign(x)
   if x > 0 then
@@ -39,69 +12,19 @@ local function sign(x)
   end
 end
 
-local function pos_unpack(pos)
-  if type(pos) == "number" then
-    log(debug.traceback())
-  end
-  local x = pos.x or pos[1]
-  local y = pos.y or pos[2]
-  return x, y
-end
-
-local function pos_norm(pos)
-  if pos.x ~= nil then
-    return pos
-  end
-  return {x = pos[1], y = pos[2]}
-end
-
-local function pos_delta(p1, p2) 
-  local x1, y1 = pos_unpack(p1)
-  local x2, y2 = pos_unpack(p2)
-  return {x2 - x1, y2 - y1}
-end
-
-local RADIX = 2 ^ 20
-
-local function pos_enc(pos)
-  local x, y = pos_unpack(pos)
-  local x_scaled = math.floor(x * 256)
-  local y_scaled = math.floor(y * 256)
-
-  assert(x_scaled < RADIX and y_scaled < RADIX)
-
-  return x_scaled + RADIX * y_scaled
-end
-
-local function l2_distance(p1, p2)
-  local x1, y1 = pos_unpack(p1)
-  local x2, y2 = pos_unpack(p2)
-  local dx = x2 - x1
-  local dy = y2 - y1
-  return math.sqrt(dx * dx + dy * dy)
-end
-
-local function linf_distance(p1, p2)
-  local x1, y1 = pos_unpack(p1)
-  local x2, y2 = pos_unpack(p2)
-  local dx = x2 - x1
-  local dy = y2 - y1
-  return math.max(math.abs(dx), math.abs(dy))
-end
-
 local function box_norm(box)
   if box.left_top ~= nil then
     return box
   end
   local left_top = box.left_top or box[1]
   local right_bottom = box.right_bottom or box[2]
-  return {left_top = pos_norm(left_top), right_bottom = pos_norm(right_bottom)}
+  return {left_top = pos.norm(left_top), right_bottom = pos.norm(right_bottom)}
 end
 
 -- Move a box from (0, 0) to center.
 local function box_move(box, center)
   local box = box_norm(box)
-  local x, y = pos_unpack(center)
+  local x, y = pos.unpack(center)
   return box_norm{
     {box.left_top.x + x, box.left_top.y + y},
     {box.right_bottom.x + x, box.right_bottom.y + y}
@@ -109,12 +32,12 @@ local function box_move(box, center)
 end
 
 -- Checks whether a point falls within bounding box
-local function box_contains(box, pos)
+local function box_contains(box, p)
   local box = box_norm(box)
-  local pos = pos_norm(pos)
+  local px, py = pos.unpack(p)
 
-  return box.left_top.x <= pos.x and box.left_top.y <= pos.y and
-         box.right_bottom.x >= pos.x and box.right_bottom.y >= pos.y
+  return box.left_top.x <= px and box.left_top.y <= py and
+         box.right_bottom.x >= px and box.right_bottom.y >= py
 end
 
 -- Checks whether two boxes intersect.
@@ -129,7 +52,7 @@ local function boxes_overlap(box1, box2)
 end
 
 local function box_padding(center, padding)
-  center = pos_norm(center)
+  center = pos.norm(center)
   return {{center.x - padding, center.y - padding}, {center.x + padding, center.y + padding}}
 end
 
@@ -244,7 +167,7 @@ end
 
 -- Return all entities in the box with the side 2*radius.
 function Controller:entities(radius)
-  local x, y = pos_unpack(self:position())
+  local x, y = pos.unpack(self:position())
   if radius == nil then radius = 1000 end
   local box = {{x - radius, y - radius}, {x + radius, y + radius}}
   return self.surface.find_entities(box)
@@ -267,9 +190,8 @@ end
 -- Mine position
 function Controller:mine()
   local player = self.player
-  local pos = self.player.position
   local reach_distance = self.player.resource_reach_distance + 0.3
-  local box = box_padding(pos, reach_distance)
+  local box = box_padding(self.player.position, reach_distance)
   local ore_entity, ore_point
 
   for _, e in ipairs(self.surface.find_entities(box)) do
@@ -305,16 +227,16 @@ function Controller:walk(dx_or_dir, dy)
   self.action_state = {action = "walking", direction = dir}
 end
 
-function Controller:simulate_walk_no_collisions(pos, dir)
-  local posx, posy = pos_unpack(pos)
+function Controller:simulate_walk_no_collisions(from, dir)
+  local px, py = pos.unpack(from)
   local dx, dy = table.unpack(DIR_TO_DELTA[dir])
   -- Default speed. TODO: Take into account the type of surface and speed bonuses.
   local speed = 38 / 256
   local diag_speed = 27 / 256
   if dx == 0 or dy == 0 then
-    return {posx + dx * speed, posy + dy * speed}
+    return {px + dx * speed, py + dy * speed}
   else
-    return {posx + dx * diag_speed, posy + dy * diag_speed}
+    return {px + dx * diag_speed, py + dy * diag_speed}
   end
 end
 
@@ -322,11 +244,11 @@ end
 -- direction (dx, dy). Instead of simulating the game behavior regarding collisions, in case we
 -- collide with anything, we return the starting position.
 -- Returns the new position.
-function Controller:simulate_walk(pos, dir)
-  local new_pos = self:simulate_walk_no_collisions(pos, dir)
+function Controller:simulate_walk(from, dir)
+  local new_pos = self:simulate_walk_no_collisions(from, dir)
   local new_tile = self.surface.get_tile(table.unpack(new_pos))
   if new_tile.collides_with("player-layer") then
-    return pos
+    return from
   end
   local player_box = box_move(self:character().prototype.collision_box, new_pos)
   for _, entity in ipairs(self.surface.find_entities(box_padding(new_pos, 3))) do
@@ -335,7 +257,7 @@ function Controller:simulate_walk(pos, dir)
        entity.prototype.collision_mask["player-layer"] and
        boxes_overlap(player_box, entity_box) then
       log("collision with", entity.name)
-      return pos
+      return from
     end
   end
   return new_pos
@@ -477,9 +399,9 @@ PathNode.__index = PathNode
 
 -- steps is the number of steps already taken
 -- cost is the sum of `steps` and the low estimate for the remaining part
-function PathNode.new(pos, prev_enc, dir, steps, cost)
+function PathNode.new(position, prev_enc, dir, steps, cost)
   local self = {
-    pos = pos,
+    pos = position,
     prev_enc = prev_enc,
     dir = dir,
     steps = steps,
@@ -518,23 +440,23 @@ end
 
 -- Low estimate for the number of ticks to reach a point within the given distance from any of the
 -- goals.
-function Pathfinder:_estimate_steps(pos)
-  local enc = pos_enc(pos)
-  local cached_steps = self.steps_cache[enc]
+function Pathfinder:_estimate_steps(from)
+  local from_enc = pos.enc(from)
+  local cached_steps = self.steps_cache[from_enc]
   if cached_steps ~= nil then
     self.cache_hits = self.cache_hits + 1
     return cached_steps
   end
 
-  local pos = pos_norm(pos)
+  local from = pos.norm(from)
   local speed = 38 / 256
   local diag_speed = 27 / 256
   local min_steps = 1E9
   local sqrt2 = math.sqrt(2)
 
   for _, goal in ipairs(self.goals) do
-    local goal = pos_norm(goal)
-    local dist = l2_distance(pos, goal)
+    local goal = pos.norm(goal)
+    local dist = pos.dist_l2(from, goal)
     if dist < self.distance then return 0 end
 
     local steps = math.ceil((dist - self.distance) / speed)
@@ -543,7 +465,7 @@ function Pathfinder:_estimate_steps(pos)
   end
 
   self.cache_misses = self.cache_misses + 1
-  self.steps_cache[enc] = min_steps
+  self.steps_cache[from_enc] = min_steps
 
   return min_steps
 end
@@ -576,7 +498,7 @@ function Pathfinder:next_step()
   while not queue:empty() and counter < 64 and min_cost > 0 do
     local node = queue:pop()
     assert(node ~= nil)
-    local enc = pos_enc(node.pos)
+    local enc = pos.enc(node.pos)
     if visited[enc] ~= nil then goto continue end
     visited[enc] = node
     counter = counter + 1
@@ -644,7 +566,7 @@ end
 function Ai:start()
   -- self.start_clock = os.clock()
   self.updates = 0
-  self.controller:add_listener(bind(self, 'update'))
+  self.controller:add_listener(util.bind(self, 'update'))
 
   local coal_entities = self.controller:entities_filtered{name = "coal"}
   log("Found", #coal_entities, "coal entities")
@@ -664,11 +586,11 @@ function Ai:update()
   -- if self.controller:current_action() == "mining" then return end
 
   if self.prediction ~= nil then
-    if linf_distance(self.prediction.expected_pos, self.controller:position()) > 0 then
+    if pos.dist_linf(self.prediction.expected_pos, self.controller:position()) > 0 then
       log(self.prediction)
       log("Actual position:", self.controller:position())
-      log("Expected delta:", pos_delta(self.prediction.expected_pos, self.prediction.current_pos))
-      log("Actual delta:", pos_delta(self.controller:position(), self.prediction.current_pos))
+      log("Expected delta:", pos.delta(self.prediction.expected_pos, self.prediction.current_pos))
+      log("Actual delta:", pos.delta(self.controller:position(), self.prediction.current_pos))
       self.prediction = nil
       self:stop()
       return
@@ -681,8 +603,8 @@ function Ai:update()
   local ore_entity = nil
   for _, e in ipairs(coal_entities) do
     -- log("L2 distance to entity:",
-    --     l2_distance(self.controller:position(), e.position),
-    --     "Linf distance to entity:", linf_distance(self.controller:position(), e.position))
+    --     pos.dist_l2(self.controller:position(), e.position),
+    --     "Linf distance to entity:", pos.dist_linf(self.controller:position(), e.position))
     if self.controller:is_minable(e) then
       ore_entity = e
       break
@@ -694,8 +616,8 @@ function Ai:update()
     -- log(mine_clock - self.start_clock, "seconds per", self.updates, "updates =",
     --     (mine_clock - self.start_clock) / self.updates, "s per update")
     log("Reached ore entity", ore_entity.name, ore_entity.position)
-    log("L2 distance to entity:", l2_distance(self.controller:position(), ore_entity.position))
-    log("Linf distance to entity:", linf_distance(self.controller:position(), ore_entity.position))
+    log("L2 distance to entity:", pos.dist_l2(self.controller:position(), ore_entity.position))
+    log("Linf distance to entity:", pos.dist_linf(self.controller:position(), ore_entity.position))
     self.controller:mine_entity(ore_entity)
     return
   end
@@ -720,7 +642,7 @@ local active_ai = nil;
 local function get_controller()
   if active_controller == nil then
     active_controller = Controller.new(game.player)
-    script.on_nth_tick(1, bind(active_controller, 'on_tick'))
+    script.on_nth_tick(1, util.bind(active_controller, 'on_tick'))
   end
   return active_controller
 end
@@ -748,7 +670,7 @@ local function stop()
   get_controller():remove_all_listeners()
 end
 
-local function pos()
+local function player_pos()
   local pos = get_controller():position()
   game.print("position: " .. serpent.line(pos))
   game.print("resource_reach_distance: " .. game.player.resource_reach_distance)
@@ -812,7 +734,7 @@ local function test_walk(args)
   local function continue(controller)
     local new_pos = controller:position()
     
-    if l2_distance(new_pos, expected_pos) > 0.001 then
+    if pos.dist_l2(new_pos, expected_pos) > 0.001 then
       log(pos, "->", new_pos)
       log("expected:", expected_pos)
     end
@@ -831,11 +753,22 @@ end
 local function test()
   test_selection_diff()
   test_priority_queue()
+  pos.test()
+end
+
+local function env()
+  local list = {}
+  for n in pairs(_G) do
+    table.insert(list, n)
+  end
+  table.sort(list)
+  log(list)
+  log(_VERSION)
 end
 
 commands.add_command("start", "Give AI control over the player", start)
 commands.add_command("stop", "Stops AI and any running actions in Controller", stop)
-commands.add_command("pos", "Show current position", pos)
+commands.add_command("pos", "Show current position", player_pos)
 commands.add_command("entities", "Show entities around", entities)
 commands.add_command("all_entities", "Show all known entities", all_entities)
 commands.add_command("recipes", "Show all known recipes", recipes)
@@ -843,3 +776,4 @@ commands.add_command("mine", "Mine the nearest minable tile", mine)
 commands.add_command("walk", "Walk in the direction given by two relative coordinates", walk)
 commands.add_command("test", "Run unit tests", test)
 commands.add_command("test-walk", "Investigate how walking works", test_walk)
+commands.add_command("env", "Show all variable in global environment", env)
