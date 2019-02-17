@@ -678,6 +678,7 @@ end
 
 local function test()
   pos.test()
+  pos.test_pack_delta()
   pqueue.small_test()
   pqueue.test()
   test_selection_diff()

@@ -68,6 +68,14 @@ local function dist_linf(p1, p2)
   return math.max(math.abs(dx), math.abs(dy))
 end
 
+-- Returns a single value that can be added to a packed position so that (x, y) is transformed to
+-- (x + dx, y + dy)
+local function pack_delta(dx, dy)
+  local p = pack(dx, dy)
+  local p0 = pack(0, 0)
+  return p - p0
+end
+
 local function test()
   for x = -10, 10, 239/256 do
     for y = -10, 10, 239/256 do
@@ -99,6 +107,23 @@ local function test()
   log("pos.test ok")
 end
 
+local function test_pack_delta()
+  for _i = 1, 10 do
+  local dx = math.random(-10000, 10000) / 256
+  local dy = math.random(-10000, 10000) / 256
+  local x = math.random(-10000, 10000) / 256
+  local y = math.random(-10000, 10000) / 256
+
+  local p = pack(x, y)
+  local d = pack_delta(dx, dy)
+  local xn, yn = unpack(p + d)
+  assert(xn == x + dx)
+  assert(yn == y + dy)
+  end
+
+  log("pos.test_pack_delta ok")
+end
+
 return {
   pack = pack,
   unpack = unpack,
@@ -106,5 +131,7 @@ return {
   delta = delta,
   dist_l2 = dist_l2,
   dist_linf = dist_linf,
+  pack_delta = pack_delta,
   test = test,
+  test_pack_delta = test_pack_delta,
 }
