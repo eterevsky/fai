@@ -1,6 +1,8 @@
+local pos = require "pos"
+local pqueue = require "pqueue"
+local PriorityQueue = pqueue.PriorityQueue
 local util = require "util"
 local log = util.log
-local pos = require "pos"
 
 local function sign(x)
   if x > 0 then
@@ -302,96 +304,6 @@ function Controller:update()
     self.player.update_selected_entity(self.action_state.position)
     self.player.mining_state = {mining = true, position = self.action_state.position}
   end
-end
-
--- Binary heap-based priority queue.
-
-local PriorityQueue = {}
-PriorityQueue.__index = PriorityQueue
-
-function PriorityQueue.new()
-  local self = {}
-  setmetatable(self, PriorityQueue)
-  self.heap = {}
-  return self
-end
-
--- Adds an entry to the priority queue.
-function PriorityQueue:push(entry)
-  table.insert(self.heap, entry)
-  self:_sift_down(#self.heap)
-end
-
-function PriorityQueue:empty()
-  return next(self.heap) == nil
-end
-
-function PriorityQueue:pop()
-  local last = table.remove(self.heap)
-  if not self:empty() then
-    local ret = self.heap[1]
-    self.heap[1] = last
-    self:_sift_up(1)
-    return ret
-  else
-    return last
-  end
-end
-
-function PriorityQueue:size()
-  return #self.heap
-end
-
-function PriorityQueue:_sift_down(idx)
-  while idx > 1 do
-    local parent_idx = math.floor(idx / 2)
-
-    if self.heap[parent_idx] < self.heap[idx] then return end
-
-    local temp = self.heap[idx]
-    self.heap[idx] = self.heap[parent_idx]
-    self.heap[parent_idx] = temp
-
-    idx = parent_idx    
-  end
-end
-
-function PriorityQueue:_sift_up(idx)
-  while idx < #self.heap do
-    local left = 2 * idx
-    local right = left + 1
-    if (left > #self.heap or self.heap[idx] < self.heap[left]) and
-       (right > #self.heap or self.heap[idx] < self.heap[right]) then
-      return
-    end
-    if right <= #self.heap and self.heap[right] < self.heap[left] then
-      local temp = self.heap[right]
-      self.heap[right] = self.heap[idx]
-      self.heap[idx] = temp
-      idx = right
-    else
-      local temp = self.heap[left]
-      self.heap[left] = self.heap[idx]
-      self.heap[idx] = temp
-      idx = left
-    end
-  end
-end
-
-local function test_priority_queue()
-  local queue = PriorityQueue.new()
-  queue:push(2)
-  queue:push(1)
-  assert(queue:pop() == 1)
-  queue:push(3)
-  queue:push(4)
-  assert(queue:pop() == 2)
-  queue:push(-1)
-  assert(queue:pop() == -1)
-  assert(queue:pop() == 3)
-  assert(queue:size() == 1)
-
-  log("test_priority_queue ok")
 end
 
 local PathNode = {}
@@ -765,9 +677,10 @@ local function test_walk(args)
 end
 
 local function test()
-  test_selection_diff()
-  test_priority_queue()
   pos.test()
+  pqueue.small_test()
+  pqueue.test()
+  test_selection_diff()
 end
 
 local function env()
