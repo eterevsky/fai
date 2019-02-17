@@ -1,8 +1,12 @@
+local box = require "box"
 local pos = require "pos"
 local pqueue = require "pqueue"
 local PriorityQueue = pqueue.PriorityQueue
 local util = require "util"
 local log = util.log
+local walking = require "walking"
+local WalkSimulator = walking.WalkSimulator
+local DIRECTIONS = walking.DIRECTIONS
 
 local function sign(x)
   if x > 0 then
@@ -12,133 +16,6 @@ local function sign(x)
   else
     return 0
   end
-end
-
-local function box_norm(box)
-  if box.left_top ~= nil then
-    return box
-  end
-  local left_top = box.left_top or box[1]
-  local right_bottom = box.right_bottom or box[2]
-  return {left_top = pos.norm(left_top), right_bottom = pos.norm(right_bottom)}
-end
-
--- Move a box from (0, 0) to center.
-local function box_move(box, center)
-  local box = box_norm(box)
-  local x, y = pos.unpack(center)
-  return box_norm{
-    {box.left_top.x + x, box.left_top.y + y},
-    {box.right_bottom.x + x, box.right_bottom.y + y}
-  }
-end
-
--- Checks whether a point falls within bounding box
-local function box_contains(box, p)
-  local box = box_norm(box)
-  local px, py = pos.unpack(p)
-
-  return box.left_top.x <= px and box.left_top.y <= py and
-         box.right_bottom.x >= px and box.right_bottom.y >= py
-end
-
--- Checks whether two boxes intersect.
-local function boxes_overlap(box1, box2)
-  local box1 = box_norm(box1)
-  local box2 = box_norm(box2)
-
-  return box1.left_top.x < box2.right_bottom.x and
-         box1.right_bottom.x > box2.left_top.x and
-         box1.left_top.y < box2.right_bottom.y and
-         box1.right_bottom.y > box2.left_top.y
-end
-
-local function box_padding(center, padding)
-  center = pos.norm(center)
-  return {{center.x - padding, center.y - padding}, {center.x + padding, center.y + padding}}
-end
-
--- Find a point, that is inside bounding box 1, but not inside bounding box 2.
-local function selection_diff(box1, box2)
-  local box1 = box_norm(box1)
-  local box2 = box_norm(box2)
-
-  local x = (box1.right_bottom.x + box1.left_top.x) / 2
-  if box1.left_top.x < box2.left_top.x then
-    x = (box1.left_top.x + math.min(box1.right_bottom.x, box2.left_top.x)) / 2
-  elseif box1.right_bottom.x > box2.right_bottom.x then
-    x = (box1.right_bottom.x + math.max(box1.left_top.x, box2.right_bottom.x)) / 2
-  end
-
-  local y = (box1.right_bottom.y + box1.left_top.y) / 2
-  if box1.left_top.y < box2.left_top.y then
-    y = (box1.left_top.y + math.min(box1.right_bottom.y, box2.left_top.y)) / 2
-  elseif box1.right_bottom.y > box2.right_bottom.y then
-    y = (box1.right_bottom.y + math.max(box1.left_top.y, box2.right_bottom.y)) / 2
-  end
-
-  if box_contains(box2, {x, y}) then
-    return nil
-  end
-  
-  return {x = x, y = y}
-end
-
-local function test_selection_diff()
-  local box1 = {{1, 2}, {2, 3}}
-  local box2 = {{0, 1}, {3, 4}}
-  local p = selection_diff(box1, box2)
-  assert(p == nil)
-
-  box2 = {{1.5, 1}, {3, 4}}
-  p = selection_diff(box1, box2)
-  assert(p ~= nil)
-  assert(box_contains(box1, p))
-  assert(not box_contains(box2, p))
-
-  box2 = {{0, 0}, {3, 2.5}}
-  p = selection_diff(box1, box2)
-  assert(p ~= nil)
-  assert(box_contains(box1, p))
-  assert(not box_contains(box2, p))
-
-  box2 = {{1.1, 2.1}, {1.9, 2.9}}
-  p = selection_diff(box1, box2)
-  assert(p ~= nil)
-  assert(box_contains(box1, p))
-  assert(not box_contains(box2, p))
-
-  log("test_selection_diff ok")
-end
-
-local DIR_TO_DELTA = {}
-DIR_TO_DELTA[defines.direction.north]	= {0, -1}
-DIR_TO_DELTA[defines.direction.northeast]	= {1, -1}
-DIR_TO_DELTA[defines.direction.east] = {1, 0}
-DIR_TO_DELTA[defines.direction.southeast]	= {1, 1}
-DIR_TO_DELTA[defines.direction.south]	= {0, 1}
-DIR_TO_DELTA[defines.direction.southwest]	= {-1, 1}
-DIR_TO_DELTA[defines.direction.west] = {-1, 0}
-DIR_TO_DELTA[defines.direction.northwest] = {-1, -1}
-
-local DIRECTIONS = {}
-for dir, _ in pairs(DIR_TO_DELTA) do
-  table.insert(DIRECTIONS, dir)
-end
-
-local function encode_delta(dx, dy)
-  local x = sign(dx) + 1
-  local y = sign(dy) + 1
-  return x * 3 + y
-end
-
-local DELTA_TO_DIR = {}
-for dir, delta in pairs(DIR_TO_DELTA) do
-  DELTA_TO_DIR[encode_delta(delta[1], delta[2])] = dir
-end
-
-local function delta_to_dir(dx, dy)
-  return DELTA_TO_DIR[encode_delta(dx, dy)]
 end
 
 -- Controller creates a useful subset of Factorio API through which the AI controls the game.
@@ -169,10 +46,14 @@ end
 
 -- Return all entities in the box with the side 2*radius.
 function Controller:entities(radius)
-  local x, y = pos.unpack(self:position())
   if radius == nil then radius = 1000 end
-  local box = {{x - radius, y - radius}, {x + radius, y + radius}}
-  return self.surface.find_entities(box)
+  local bounding_box = box.padding(self:position(), radius)
+  return self.surface.find_entities(bounding_box)
+end
+
+function Controller:entities_in_box(bounding_box)
+  local bounding_box = box.norm(bounding_box)
+  return self.surface.find_entities(bounding_box)
 end
 
 function Controller:entities_filtered(filters)
@@ -191,9 +72,8 @@ end
 
 -- Mine position
 function Controller:mine()
-  local player = self.player
   local reach_distance = self.player.resource_reach_distance + 0.3
-  local box = box_padding(self.player.position, reach_distance)
+  local box = box.padding(self:position(), reach_distance)
   local ore_entity, ore_point
 
   for _, e in ipairs(self.surface.find_entities(box)) do
@@ -221,47 +101,12 @@ function Controller:mine_entity(entity)
 end
 
 -- Walk one step in given direction
-function Controller:walk(dx_or_dir, dy)
-  local dir = dx_or_dir
-  if dy ~= nil then
-    dir = delta_to_dir(dx_or_dir, dy)
-  end
+function Controller:walk(dir)
   self.action_state = {action = "walking", direction = dir}
 end
 
-function Controller:simulate_walk_no_collisions(from, dir)
-  local px, py = pos.unpack(from)
-  local dx, dy = table.unpack(DIR_TO_DELTA[dir])
-  -- Default speed. TODO: Take into account the type of surface and speed bonuses.
-  local speed = 38 / 256
-  local diag_speed = 27 / 256
-  if dx == 0 or dy == 0 then
-    return {px + dx * speed, py + dy * speed}
-  else
-    return {px + dx * diag_speed, py + dy * diag_speed}
-  end
-end
-
--- Assuming that the character is in the position pos, simulate walking for one tick in the
--- direction (dx, dy). Instead of simulating the game behavior regarding collisions, in case we
--- collide with anything, we return the starting position.
--- Returns the new position.
-function Controller:simulate_walk(from, dir)
-  local new_pos = self:simulate_walk_no_collisions(from, dir)
-  local new_tile = self.surface.get_tile(pos.unpack(new_pos))
-  if new_tile.collides_with("player-layer") then
-    return from
-  end
-  local player_box = box_move(self:character().prototype.collision_box, new_pos)
-  for _, entity in ipairs(self.surface.find_entities(player_box)) do
-    local entity_box = box_move(entity.prototype.collision_box, entity.position)
-    if entity.name ~= "player" and
-       entity.prototype.collision_mask["player-layer"] and
-       boxes_overlap(player_box, entity_box) then
-      return from
-    end
-  end
-  return new_pos
+function Controller:get_tile(position)
+  return self.surface.get_tile(pos.unpack(position))
 end
 
 function Controller:add_listener(callback)
@@ -485,6 +330,7 @@ function Ai.new(controller)
   setmetatable(self, Ai)
   self.controller = controller
   self.pathfinder = Pathfinder.new(controller)
+  self.walk_prediction = WalkSimulator.new(controller)
   return self
 end
 
@@ -507,6 +353,7 @@ function Ai:stop()
 end
 
 function Ai:update()
+  self.walk_prediction.check_prediction()
   -- self.updates = self.updates + 1
   -- if self.controller:current_action() == "mining" then return end
 
@@ -558,6 +405,7 @@ function Ai:update()
   end
 
   self.controller:walk(self.prediction.step)
+  self.walk_prediction.register_prediction(self.prediction.step)
 end
 
 -- Controller and Ai singletons
@@ -646,42 +494,35 @@ local function mine(args)
 end
 
 local function walk(args)
-  game.print("Args: " .. serpent.line(args))
-  local x, y = string.match(args.parameter, "(-?%d+)%s+(-?%d+)")
-  x, y = tonumber(x), tonumber(y)
-  get_controller():walk(x, y)
+  game.print("Args: [" .. serpent.line(args) .. "]")
+  dir = defines.direction[args.parameter]
+  get_controller():walk(dir)
 end
 
 local function test_walk(args)
   local controller = get_controller()
-  local pos = controller:position()
-  local expected_pos = controller:position()
+  local simulator = WalkSimulator.new(get_controller())
+  simulator:register_prediction()
+
+  log(DIRECTIONS)
 
   local function continue(controller)
-    local new_pos = controller:position()
-    
-    if pos.dist_l2(new_pos, expected_pos) > 0.001 then
-      log(pos, "->", new_pos)
-      log("expected:", expected_pos)
-    end
-    pos = new_pos
+    simulator:check_prediction()
 
-    -- local dir = DIRECTIONS[math.random(#DIRECTIONS)]
-    local dir = defines.direction.east
+    local dir = DIRECTIONS[math.random(#DIRECTIONS)]
     controller:walk(dir)
-    expected_pos = controller:simulate_walk(pos, dir)
-    unexpected_pos = controller:simulate_walk_no_collisions(pos, dir)
+    simulator:register_prediction(dir)
   end
 
   controller:add_listener(continue)
 end
 
 local function test()
+  box.test_selection_diff()
   pos.test()
   pos.test_pack_delta()
   pqueue.small_test()
   pqueue.test()
-  test_selection_diff()
 end
 
 local function env()

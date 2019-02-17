@@ -34,14 +34,15 @@ local function pack(pos_or_x, y)
   return x_scaled + RADIX * y_scaled
 end
 
-local function norm(pos)
-  if type(pos) == "number" then
-    local x, y = unpack(pos)
-    return {x = x, y = y}
-  else
-    if pos.x ~= nil then return pos end
-    return {x = pos[1], y = pos[2]}
+local function norm(pos_or_x, y)
+  if y ~= nil then
+    return {x = pos_or_x, y = y}
   end
+  if type(pos_or_x) == "table" and pos_or_x.x ~= nil then
+    return pos_or_x
+  end 
+  local x, y = unpack(pos_or_x)
+  return {x = x, y = y}
 end
 
 local function delta(p1, p2) 
