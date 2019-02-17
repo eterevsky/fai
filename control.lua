@@ -246,17 +246,16 @@ end
 -- Returns the new position.
 function Controller:simulate_walk(from, dir)
   local new_pos = self:simulate_walk_no_collisions(from, dir)
-  local new_tile = self.surface.get_tile(table.unpack(new_pos))
+  local new_tile = self.surface.get_tile(pos.unpack(new_pos))
   if new_tile.collides_with("player-layer") then
     return from
   end
   local player_box = box_move(self:character().prototype.collision_box, new_pos)
-  for _, entity in ipairs(self.surface.find_entities(box_padding(new_pos, 3))) do
+  for _, entity in ipairs(self.surface.find_entities(player_box)) do
     local entity_box = box_move(entity.prototype.collision_box, entity.position)
     if entity.name ~= "player" and
        entity.prototype.collision_mask["player-layer"] and
        boxes_overlap(player_box, entity_box) then
-      log("collision with", entity.name)
       return from
     end
   end
@@ -359,7 +358,8 @@ end
 
 function PriorityQueue:_sift_up(idx)
   while idx < #self.heap do
-    local left, right = 2 * idx, 2 * idx + 1
+    local left = 2 * idx
+    local right = left + 1
     if (left > #self.heap or self.heap[idx] < self.heap[left]) and
        (right > #self.heap or self.heap[idx] < self.heap[right]) then
       return
@@ -441,8 +441,8 @@ end
 -- Low estimate for the number of ticks to reach a point within the given distance from any of the
 -- goals.
 function Pathfinder:_estimate_steps(from)
-  local from_enc = pos.enc(from)
-  local cached_steps = self.steps_cache[from_enc]
+  local from = pos.pack(from)
+  local cached_steps = self.steps_cache[from]
   if cached_steps ~= nil then
     self.cache_hits = self.cache_hits + 1
     return cached_steps
@@ -455,7 +455,6 @@ function Pathfinder:_estimate_steps(from)
   local sqrt2 = math.sqrt(2)
 
   for _, goal in ipairs(self.goals) do
-    local goal = pos.norm(goal)
     local dist = pos.dist_l2(from, goal)
     if dist < self.distance then return 0 end
 
@@ -465,7 +464,7 @@ function Pathfinder:_estimate_steps(from)
   end
 
   self.cache_misses = self.cache_misses + 1
-  self.steps_cache[from_enc] = min_steps
+  self.steps_cache[from] = min_steps
 
   return min_steps
 end
@@ -481,38 +480,50 @@ end
 function Pathfinder:next_step()
   self.cache_hits = 0
   self.cache_misses = 0
-  local queue = PriorityQueue.new()
   local start_pos = self.controller:position()
+  local start_pos = pos.pack(start_pos)
   local start_cost = self:_estimate_steps(start_pos)
 
-  local start_node = PathNode.new(start_pos, nil, nil, 0, start_cost)
-  queue:push(start_node)
+  local queue, visited
+  if self.old_queue ~= nil then
+    queue = self.old_queue
+    self.old_queue = nil
+    visited = self.old_visited
+    self.old_visited = nil
+    -- log("Inherited the queue with", queue:size(), "elements and", util.table_size(visited),
+    --     "visited nodes")
+  else
+    queue = PriorityQueue.new()
+    start_node = PathNode.new(start_pos, nil, nil, 0, start_cost)
+    queue:push(start_node)
+    -- visited position -> PathNode
+    visited = {}
+  end
 
-  -- visited position -> PathNode
-  local visited = {}
   local counter = 0
 
   local closest_node = nil
   local min_cost = start_cost
+  local last_node
 
-  while not queue:empty() and counter < 64 and min_cost > 0 do
+  while not queue:empty() and counter < 256 and min_cost > 0 do
     local node = queue:pop()
+    last_node = node
     assert(node ~= nil)
-    local enc = pos.enc(node.pos)
-    if visited[enc] ~= nil then goto continue end
-    visited[enc] = node
+    if visited[node.pos] ~= nil then goto continue end
+    visited[node.pos] = node
     counter = counter + 1
 
     for _, dir in ipairs(DIRECTIONS) do
       local new_pos = self.controller:simulate_walk(node.pos, dir)
       if new_pos ~= node.pos then
         local new_cost = self:_estimate_steps(new_pos)
-        local new_node = PathNode.new(new_pos, enc, dir, node.steps + 1,
+        local new_node = PathNode.new(new_pos, node.pos, dir, node.steps + 1,
                                       new_cost + node.steps + 1)
         if new_cost < min_cost then
           closest_node = new_node
           min_cost = new_cost
-          -- log("New closest node:", closest_node, " distance: ", min_cost)
+          log("New closest node:", closest_node, " distance: ", min_cost)
         end
         if new_cost == 0 then break end
 
@@ -524,7 +535,9 @@ function Pathfinder:next_step()
   end
 
   if closest_node == nil then
-    log("Didn't find any path")
+    log("Didn't find any path. last_node:", last_node)
+    self.old_visited = visited
+    self.old_queue = queue
     return nil
   end
 
@@ -572,7 +585,7 @@ function Ai:start()
   log("Found", #coal_entities, "coal entities")
   local goals = {}
   for _, e in ipairs(coal_entities) do
-    table.insert(goals, e.position)
+    table.insert(goals, pos.pack(e.position))
   end
   self.pathfinder:set_goals(goals, 2.8)
 end
@@ -587,7 +600,7 @@ function Ai:update()
 
   if self.prediction ~= nil then
     if pos.dist_linf(self.prediction.expected_pos, self.controller:position()) > 0 then
-      log(self.prediction)
+      log("Expected position:", pos.norm(self.prediction.expected_pos))
       log("Actual position:", self.controller:position())
       log("Expected delta:", pos.delta(self.prediction.expected_pos, self.prediction.current_pos))
       log("Actual delta:", pos.delta(self.controller:position(), self.prediction.current_pos))
@@ -626,8 +639,9 @@ function Ai:update()
 
   -- Path works as a stack, with the first direction on top.
   if self.prediction == nil then
-    log("Finished walk, but haven't found any ore")
-    self:stop()
+    -- log("Finished walk, but haven't found any ore")
+    -- self:stop()
+    self.controller:stop_actions()
     return
   end
 

@@ -3,16 +3,6 @@ local log = require("util").log
 local RADIX = 2^20
 local HALF_RADIX = 2^19
 
-local function pack(x, y)
-  local x_scaled = math.floor(x * 256 + 0.5) + HALF_RADIX
-  local y_scaled = math.floor(y * 256 + 0.5) + HALF_RADIX
-
-  assert(x_scaled > 0 and x_scaled < RADIX and
-         y_scaled > 0 and y_scaled < RADIX)
-
-  return x_scaled + RADIX * y_scaled
-end
-
 local function unpack(pos)
   if type(pos) == "number" then
     local x_scaled = pos % RADIX
@@ -25,10 +15,23 @@ local function unpack(pos)
   end
 end
 
-local function enc(pos)
-  if type(pos) == "number" then return pos end
-  local x, y = unpack(pos)
-  return pack(x, y)
+local function pack(pos_or_x, y)
+  local x
+  if y == nil then
+    if type(pos_or_x) == "number" then return pos_or_x end
+    x = pos_or_x.x or pos_or_x[1]
+    y = pos_or_x.y or pos_or_x[2]
+  else 
+    x = pos_or_x
+  end
+
+  local x_scaled = math.floor(x * 256 + 0.5) + HALF_RADIX
+  local y_scaled = math.floor(y * 256 + 0.5) + HALF_RADIX
+
+  assert(x_scaled > 0 and x_scaled < RADIX and
+         y_scaled > 0 and y_scaled < RADIX)
+
+  return x_scaled + RADIX * y_scaled
 end
 
 local function norm(pos)
@@ -73,10 +76,10 @@ local function test()
       assert(x == ux)
       assert(y == uy)
 
-      local upos = enc(pos)
+      local upos = pack(pos)
       assert(upos == pos)
 
-      local upos = enc({x, y})
+      local upos = pack({x, y})
       assert(upos == pos)
     end
   end
@@ -99,7 +102,6 @@ end
 return {
   pack = pack,
   unpack = unpack,
-  enc = enc,
   norm = norm,
   delta = delta,
   dist_l2 = dist_l2,
