@@ -20,6 +20,13 @@ local function norm(box)
   }
 end
 
+local function new_norm(x1, y1, x2, y2)
+  return {
+    left_top = pos.norm(x1, y1),
+    right_bottom = pos.norm(x2, y2)
+  }
+end
+
 -- Move a box from (0, 0) to center.
 local function move(box, center)
   local x1, y1, x2, y2 = unpack(box)
@@ -35,6 +42,14 @@ local function contains(box, p)
   return x1 <= px and px <= x2 and y1 <= py and py <= y2
 end
 
+local function covers(big_box, small_box)
+  local bx1, by1, bx2, by2 = unpack(big_box)
+  local sx1, sy1, sx2, sy2 = unpack(small_box)
+
+  return bx1 <= sx1 and sx1 <= bx2 and by1 <= sy1 and sy1 <= by2 and
+         bx1 <= sx2 and sx2 <= bx2 and by1 <= sy2 and sy2 <= by2
+end 
+
 -- Checks whether two boxes intersect.
 local function overlap(box1, box2)
   local box1 = norm(box1)
@@ -46,7 +61,7 @@ local function overlap(box1, box2)
          box1.right_bottom.y > box2.left_top.y
 end
 
-local function padding(center, padding)
+local function pad(center, padding)
   center = pos.norm(center)
   return {{center.x - padding, center.y - padding}, {center.x + padding, center.y + padding}}
 end
@@ -107,8 +122,13 @@ end
 
 return {
   norm = norm,
+  new_norm = new_norm,
   move = move,
   contains = contains,
-  selection_diff = selection_diff,
+  covers = covers,
+  overlap = overlap,
+  pad = pad,
+  unpack = unpack,
+  selection_diff = selection_diff, 
   test_selection_diff = test_selection_diff,
 }

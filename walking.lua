@@ -27,6 +27,10 @@ function WalkSimulator.new(controller)
   setmetatable(self, WalkSimulator)
   self.controller = controller
   self.char_collision_box = self.controller:character().prototype.collision_box
+  self.entity_cache = {}
+  self.cache_box = nil
+  self.walk_calls = 0
+  self.cache_updates = 0
   return self
 end
 
@@ -38,24 +42,61 @@ function WalkSimulator:walk_no_collisions(player_pos, dir)
   return player_pos + DIR_TO_VELOCITY[dir]
 end
 
+function WalkSimulator:reset()
+  self.cache_box = nil
+  self.walk_calls = 0
+  self.cache_updates = 0
+end
+
+function WalkSimulator:log()
+  log("entities =", #self.entity_cache, "cache_box =", self.cache_box,
+      "walk_calls =", self.walk_calls, "cache_updates =", self.cache_updates)
+end
+
+function WalkSimulator:_update_cache(player_box)
+  if self.cache_box ~= nil and box.covers(self.cache_box, player_box) then return end
+
+  self.cache_updates = self.cache_updates + 1
+  local px1, py1, px2, py2 = box.unpack(player_box)
+  local nx1, ny1, nx2, ny2
+  if self.cache_box == nil then
+    nx1, ny1, nx2, ny2 = px1, py1, px2, py2
+  else
+    local cx1, cy1, cx2, cy2 = box.unpack(self.cache_box)
+    nx1 = math.min(cx1, px1 - 0.5)
+    ny1 = math.min(cy1, py1 - 0.5)
+    nx2 = math.max(cx2, px2 + 0.5)
+    ny2 = math.max(cy2, py2 + 0.5)
+  end
+
+  local new_box = box.new_norm(nx1, ny1, nx2, ny2)
+  self.cache_box = new_box
+  self.entity_cache = {}
+
+  for _, entity in ipairs(self.controller:entities_in_box(new_box)) do
+    local entity_box = box.move(entity.prototype.collision_box, entity.position)
+    if entity.name ~= "player" and
+       entity.prototype.collision_mask["player-layer"] then
+      table.insert(self.entity_cache, entity_box)
+    end
+  end
+end
+
 -- Assuming that the character is in the position `from`, simulate walking for one tick in the
 -- direction (dx, dy). Instead of simulating the game behavior regarding collisions, in case we
 -- collide with anything, we return the starting position.
 -- Returns the new position.
 function WalkSimulator:walk(from, dir)
+  self.walk_calls = self.walk_calls + 1
   local new_pos = self:walk_no_collisions(from, dir)
   local new_tile = self.controller:get_tile(new_pos)
   if new_tile.collides_with("player-layer") then
     return from
   end
   local player_box = box.move(self.char_collision_box, new_pos)
-  for _, entity in ipairs(self.controller:entities_in_box(player_box)) do
-    local entity_box = box.move(entity.prototype.collision_box, entity.position)
-    if entity.name ~= "player" and
-       entity.prototype.collision_mask["player-layer"] and
-       box.overlap(player_box, entity_box) then
-      return from
-    end
+  self:_update_cache(player_box)
+  for _, entity_box in ipairs(self.entity_cache) do
+    if box.overlap(player_box, entity_box) then return from end
   end
   return new_pos
 end
@@ -69,6 +110,7 @@ function WalkSimulator:register_prediction(dir)
 end
 
 function WalkSimulator:check_prediction()
+  self:reset()  
   if self.predicted_pos == nil then return end
   local player_pos = pos.pack(self.controller:position())
   if player_pos ~= self.predicted_pos then

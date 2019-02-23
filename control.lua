@@ -47,7 +47,7 @@ end
 -- Return all entities in the box with the side 2*radius.
 function Controller:entities(radius)
   if radius == nil then radius = 1000 end
-  local bounding_box = box.padding(self:position(), radius)
+  local bounding_box = box.pad(self:position(), radius)
   return self.surface.find_entities(bounding_box)
 end
 
@@ -73,10 +73,10 @@ end
 -- Mine position
 function Controller:mine()
   local reach_distance = self.player.resource_reach_distance + 0.3
-  local box = box.padding(self:position(), reach_distance)
+  local player_box = box.padding(self:position(), reach_distance)
   local ore_entity, ore_point
 
-  for _, e in ipairs(self.surface.find_entities(box)) do
+  for _, e in ipairs(self.surface.find_entities(player_box)) do
     if self:is_minable(e) then
       ore_entity = e
     end
@@ -96,7 +96,7 @@ function Controller:is_minable(entity)
 end
 
 function Controller:mine_entity(entity)
-  local selection_point = selection_diff(entity.selection_box, self.player.character.selection_box)
+  local selection_point = box.selection_diff(entity.selection_box, self.player.character.selection_box)
   self.action_state = {action = "mining", position = selection_point, entity = entity}
 end
 
@@ -168,6 +168,11 @@ function PathNode.new(position, prev_enc, dir, steps, cost)
   return self
 end
 
+-- Returns the estimated distance from the node position to the goals.
+function PathNode:remaining_steps()
+  return self.cost - self.steps
+end
+
 PathNode.__eq = function(a, b)
   return a.cost == b.cost
 end
@@ -190,8 +195,12 @@ function Pathfinder.new(controller)
   self.controller = controller
   self.goals = {}
   self.distance = 1.0
+  -- Every next step should lead to the closest node that is no further from the goals than on the
+  -- previous step
+  self.closest_node_distance = nil
   -- Encoded position -> distance to goals
   self.steps_cache = {}
+  self.simulator = WalkSimulator.new(controller)
   return self
 end
 
@@ -205,7 +214,6 @@ function Pathfinder:_estimate_steps(from)
     return cached_steps
   end
 
-  local from = pos.norm(from)
   local speed = 38 / 256
   local diag_speed = 27 / 256
   local min_steps = 1E9
@@ -250,6 +258,7 @@ function Pathfinder:next_step()
     -- log("Inherited the queue with", queue:size(), "elements and", util.table_size(visited),
     --     "visited nodes")
   else
+    self.simulator:reset()
     queue = PriorityQueue.new()
     start_node = PathNode.new(start_pos, nil, nil, 0, start_cost)
     queue:push(start_node)
@@ -272,7 +281,7 @@ function Pathfinder:next_step()
     counter = counter + 1
 
     for _, dir in ipairs(DIRECTIONS) do
-      local new_pos = self.controller:simulate_walk(node.pos, dir)
+      local new_pos = self.simulator:walk(node.pos, dir)
       if new_pos ~= node.pos then
         local new_cost = self:_estimate_steps(new_pos)
         local new_node = PathNode.new(new_pos, node.pos, dir, node.steps + 1,
@@ -280,7 +289,6 @@ function Pathfinder:next_step()
         if new_cost < min_cost then
           closest_node = new_node
           min_cost = new_cost
-          log("New closest node:", closest_node, " distance: ", min_cost)
         end
         if new_cost == 0 then break end
 
@@ -292,13 +300,23 @@ function Pathfinder:next_step()
   end
 
   if closest_node == nil then
-    log("Didn't find any path. last_node:", last_node)
+    -- log("Not found. min_cost =", min_cost, "(", self.cache_hits, "/", self.cache_misses, ")")
+    -- self.simulator:log()
+    self.old_visited = visited
+    self.old_queue = queue
+    return nil
+  end
+
+  if self.closest_node_distance ~= nil and
+     closest_node:remaining_steps() > self.closest_node_distance then
+    -- log("Closest node too far:", closest_node, "(", self.cache_hits, "/", self.cache_misses, ")")
     self.old_visited = visited
     self.old_queue = queue
     return nil
   end
 
   local node = closest_node
+  self.closest_node_distance = closest_node:remaining_steps()
   local steps = 0
   local next_dir = nil
   local next_pos = nil
@@ -309,8 +327,10 @@ function Pathfinder:next_step()
     steps = steps + 1
   end
 
-  -- log("Found", steps, "steps + cost of last node: ", min_cost, " = initial estimation + ",
+  log(steps, "+", min_cost, "steps (", self.cache_hits, "/", self.cache_misses, ")")
+  -- log(steps, " steps + estimation ", min_cost, " = initial estimation + ",
   --     min_cost + steps - start_cost, "(", self.cache_hits, "/", self.cache_misses, ")")
+  -- self.simulator:log()
 
   return {
     current_pos = start_pos,
@@ -330,7 +350,7 @@ function Ai.new(controller)
   setmetatable(self, Ai)
   self.controller = controller
   self.pathfinder = Pathfinder.new(controller)
-  self.walk_prediction = WalkSimulator.new(controller)
+  self.walk_simulator = WalkSimulator.new(controller)
   return self
 end
 
@@ -353,7 +373,7 @@ function Ai:stop()
 end
 
 function Ai:update()
-  self.walk_prediction.check_prediction()
+  self.walk_simulator:check_prediction()
   -- self.updates = self.updates + 1
   -- if self.controller:current_action() == "mining" then return end
 
@@ -370,8 +390,8 @@ function Ai:update()
     self.prediction = nil
   end
 
-  local box = box_padding(self.controller:position(), 3)
-  local coal_entities = self.controller:entities_filtered{area=box, name = "coal"}
+  local player_box = box.pad(self.controller:position(), 3)
+  local coal_entities = self.controller:entities_filtered{area=player_box, name = "coal"}
   local ore_entity = nil
   for _, e in ipairs(coal_entities) do
     -- log("L2 distance to entity:",
@@ -405,7 +425,7 @@ function Ai:update()
   end
 
   self.controller:walk(self.prediction.step)
-  self.walk_prediction.register_prediction(self.prediction.step)
+  self.walk_simulator:register_prediction(self.prediction.step)
 end
 
 -- Controller and Ai singletons
