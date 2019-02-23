@@ -127,7 +127,13 @@ function WalkSimulator:check_prediction()
     
     assert(dx == 0 or dx == pdx)
     assert(dy == 0 or dy == pdy)
+
+    -- log("Expected position:", pos.norm(self.prediction.expected_pos))
+    -- log("Actual position:", self.controller:position())
+    -- log("Expected delta:", pos.delta(self.prediction.expected_pos, self.prediction.current_pos))
+    -- log("Actual delta:", pos.delta(self.controller:position(), self.prediction.current_pos))
   end
+  self.predicted_pos = nil
 end
 
 return {

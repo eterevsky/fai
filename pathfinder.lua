@@ -95,6 +95,15 @@ function Pathfinder:set_goals(goals, distance)
   self.steps_cache = {}
 end
 
+function Pathfinder:clear_goals()
+  self.goals = {}
+  self.steps_cache = {}
+end
+
+function Pathfinder:has_goals()
+  return #self.goals > 0
+end
+
 -- A* search that finds the fastest path to any position from goals, ending within the distance of
 -- it.
 function Pathfinder:next_step()
@@ -186,11 +195,7 @@ function Pathfinder:next_step()
   --     min_cost + steps - start_cost, "(", self.cache_hits, "/", self.cache_misses, ")")
   -- self.simulator:log()
 
-  return {
-    current_pos = start_pos,
-    expected_pos = next_pos,
-    step = next_dir
-  }
+  return next_dir
 end
 
 return {

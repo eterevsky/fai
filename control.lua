@@ -7,16 +7,6 @@ local walking = require "walking"
 local WalkSimulator = walking.WalkSimulator
 local DIRECTIONS = walking.DIRECTIONS
 
-local function sign(x)
-  if x > 0 then
-    return 1
-  elseif x < 0 then
-    return -1
-  else
-    return 0
-  end
-end
-
 -- Controller creates a useful subset of Factorio API through which the AI controls the game.
 
 local Controller = {}
@@ -27,8 +17,6 @@ function Controller.new(player)
   setmetatable(controller, Controller)
   controller.player = player
   controller.surface = player.surface
-  controller.action_state = {type = nil}
-  controller.old_action_state = nil
   controller.listeners = {}
   return controller
 end
@@ -59,13 +47,8 @@ function Controller:entities_filtered(filters)
   return self.surface.find_entities_filtered(filters)
 end
 
-function Controller:stop_actions()
-  self.action_state = {action = nil}
-end
-
 -- Stop any running action
 function Controller:stop()
-  self:stop_actions()
   self:remove_all_listeners()
 end
 
@@ -96,12 +79,13 @@ end
 
 function Controller:mine_entity(entity)
   local selection_point = box.selection_diff(entity.selection_box, self.player.character.selection_box)
-  self.action_state = {action = "mining", position = selection_point, entity = entity}
+  self.player.update_selected_entity(selection_point)
+  self.player.mining_state = {mining = true, position = selection_point}
 end
 
 -- Walk one step in given direction
 function Controller:walk(dir)
-  self.action_state = {action = "walking", direction = dir}
+  self.player.walking_state = {walking = true, direction = dir}
 end
 
 function Controller:get_tile(position)
@@ -129,25 +113,6 @@ function Controller:on_tick()
   for _, listener in ipairs(self.listeners) do
     listener(self)
   end
-  self:update()
-end
-
-function Controller:current_action()
-  return self.action_state.action
-end
-
--- Keep doing whatever we are doing (i.e. walking, mining)
-function Controller:update()
-  if self.old_action_state ~= self.action_state then
-    -- game.print("New action_state: " .. serpent.line(self.action_state))
-    self.old_action_state = self.action_state
-  end
-  if self.action_state.action == "walking" then
-    self.player.walking_state = {walking = true, direction = self.action_state.direction}
-  elseif self.action_state.action == "mining" then
-    self.player.update_selected_entity(self.action_state.position)
-    self.player.mining_state = {mining = true, position = self.action_state.position}
-  end
 end
 
 -- Ai makes the decisions what to do and controls the character through the controller object.
@@ -161,52 +126,24 @@ function Ai.new(controller)
   self.controller = controller
   self.pathfinder = Pathfinder.new(controller)
   self.walk_simulator = WalkSimulator.new(controller)
+  self.previous_action = nil
   return self
 end
 
 function Ai:start()
-  -- self.start_clock = os.clock()
   self.updates = 0
   self.controller:add_listener(util.bind(self, 'update'))
-
-  local coal_entities = self.controller:entities_filtered{name = "coal"}
-  log("Found", #coal_entities, "coal entities")
-  local goals = {}
-  for _, e in ipairs(coal_entities) do
-    table.insert(goals, pos.pack(e.position))
-  end
-  self.pathfinder:set_goals(goals, 2.8)
 end
 
 function Ai:stop()
   self.controller:stop()
 end
 
-function Ai:update()
-  self.walk_simulator:check_prediction()
-  -- self.updates = self.updates + 1
-  -- if self.controller:current_action() == "mining" then return end
-
-  if self.prediction ~= nil then
-    if pos.dist_linf(self.prediction.expected_pos, self.controller:position()) > 0 then
-      log("Expected position:", pos.norm(self.prediction.expected_pos))
-      log("Actual position:", self.controller:position())
-      log("Expected delta:", pos.delta(self.prediction.expected_pos, self.prediction.current_pos))
-      log("Actual delta:", pos.delta(self.controller:position(), self.prediction.current_pos))
-      self.prediction = nil
-      self:stop()
-      return
-    end
-    self.prediction = nil
-  end
-
+function Ai:try_to_mine()
   local player_box = box.pad(self.controller:position(), 3)
   local coal_entities = self.controller:entities_filtered{area=player_box, name = "coal"}
   local ore_entity = nil
   for _, e in ipairs(coal_entities) do
-    -- log("L2 distance to entity:",
-    --     pos.dist_l2(self.controller:position(), e.position),
-    --     "Linf distance to entity:", pos.dist_linf(self.controller:position(), e.position))
     if self.controller:is_minable(e) then
       ore_entity = e
       break
@@ -214,28 +151,47 @@ function Ai:update()
   end
 
   if ore_entity ~= nil then
-    -- local mine_clock = os.clock()
-    -- log(mine_clock - self.start_clock, "seconds per", self.updates, "updates =",
-    --     (mine_clock - self.start_clock) / self.updates, "s per update")
-    log("Reached ore entity", ore_entity.name, ore_entity.position)
-    log("L2 distance to entity:", pos.dist_l2(self.controller:position(), ore_entity.position))
-    log("Linf distance to entity:", pos.dist_linf(self.controller:position(), ore_entity.position))
     self.controller:mine_entity(ore_entity)
+
+    if self.previous_action ~= "mine" then
+      log("Reached ore entity", ore_entity.name, ore_entity.position)
+      log("L2 distance to entity:", pos.dist_l2(self.controller:position(), ore_entity.position))
+      log("Linf distance to entity:", pos.dist_linf(self.controller:position(), ore_entity.position))
+      self.previous_action = "mine"
+    end
+    return true
+  end
+
+  return false
+end
+
+function Ai:update()
+  if self.previous_action == "walk" then
+    self.walk_simulator:check_prediction()
+  end
+
+  if self:try_to_mine() then return end
+
+  if not self.pathfinder:has_goals() then
+    local coal_entities = self.controller:entities_filtered{name = "coal"}
+    log("Found", #coal_entities, "coal entities")
+    local goals = {}
+    for _, e in ipairs(coal_entities) do
+      table.insert(goals, pos.pack(e.position))
+    end
+    self.pathfinder:set_goals(goals, 2.8)
+  end
+
+  local dir = self.pathfinder:next_step()
+
+  if dir ~= nil then
+    self.controller:walk(dir)
+    self.walk_simulator:register_prediction(dir)
+    self.previous_action = "walk"
     return
   end
 
-  self.prediction = self.pathfinder:next_step()
-
-  -- Path works as a stack, with the first direction on top.
-  if self.prediction == nil then
-    -- log("Finished walk, but haven't found any ore")
-    -- self:stop()
-    self.controller:stop_actions()
-    return
-  end
-
-  self.controller:walk(self.prediction.step)
-  self.walk_simulator:register_prediction(self.prediction.step)
+  self.previous_action = nil
 end
 
 -- Controller and Ai singletons
