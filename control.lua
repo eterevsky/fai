@@ -31,11 +31,16 @@ function Controller:character()
   return self.player.character
 end
 
--- Return all entities in the box with the side 2*radius.
+-- Returns all entities in the box with the side 2*radius.
 function Controller:entities(radius)
   if radius == nil then radius = 1000 end
   local bounding_box = box.pad(self:position(), radius)
   return self.surface.find_entities(bounding_box)
+end
+
+-- Returns a dictionary name -> LuaRecipe of all available recipes.
+function Controller:recipes()
+  return self.player.force.recipes
 end
 
 function Controller:entities_in_box(bounding_box)
@@ -81,6 +86,22 @@ function Controller:mine_entity(entity)
   local selection_point = box.selection_diff(entity.selection_box, self.player.character.selection_box)
   self.player.update_selected_entity(selection_point)
   self.player.mining_state = {mining = true, position = selection_point}
+end
+
+function Controller:get_inventory(type)
+  if type == nil then
+    return self.player.character.get_main_inventory()
+  else
+    return self.player.character.get_inventory(type)
+  end
+end
+
+function Controller:craft(recipe)
+  self.player.begin_crafting{count=1, recipe=recipe}
+end
+
+function Controller:crafting_queue()
+  return self.player.character.crafting_queue
 end
 
 -- Walk one step in given direction
@@ -154,9 +175,10 @@ function Ai:try_to_mine()
     self.controller:mine_entity(ore_entity)
 
     if self.previous_action ~= "mine" then
-      log("Reached ore entity", ore_entity.name, ore_entity.position)
+      log("Reached ore entity", ore_entity.name, pos.norm(ore_entity.position))
       log("L2 distance to entity:", pos.dist_l2(self.controller:position(), ore_entity.position))
-      log("Linf distance to entity:", pos.dist_linf(self.controller:position(), ore_entity.position))
+      log("Linf distance to entity:",
+          pos.dist_linf(self.controller:position(), ore_entity.position))
       self.previous_action = "mine"
     end
     return true
@@ -165,10 +187,24 @@ function Ai:try_to_mine()
   return false
 end
 
+function Ai:check_tool()
+  local tools = self.controller:get_inventory(defines.inventory.player_tools)
+  if not tools.is_empty() then return end
+  local crafting_queue = self.controller:crafting_queue()
+  if crafting_queue ~= nil then
+    for _, crafting_item in ipairs(crafting_queue) do
+      if crafting_item.recipe == "iron-axe" then return end
+    end
+  end
+  self.controller:craft("iron-axe")
+end
+
 function Ai:update()
   if self.previous_action == "walk" then
     self.walk_simulator:check_prediction()
   end
+
+  self:check_tool()
 
   if self:try_to_mine() then return end
 
@@ -260,19 +296,39 @@ local function all_entities()
     p2.y = math.max(p2.y, entity.position.y)
   end
 
-  game.print(serpent.block(type_count))
-  game.print("Found " .. count .. " entities")
-  game.print("Bounding box: " .. serpent.line(p1) .. " " .. serpent.line(p2))
+  log(serpent.block(type_count))
+  log("Found", count, "entities")
+  log("Bounding box:", p1, p2)
 end
 
 local function recipes()
-  local force = game.player.force
-  for name, recipe in pairs(force.recipes) do
+  for name, recipe in pairs(get_controller():recipes()) do
     if name == "engine-unit" or recipe.enabled and not recipe.hidden then
-      game.print(recipe.name .. " "  ..
-                 recipe.category .. " ")
+      log(recipe.name, recipe.category)
     end
   end
+end
+
+local function recipe(args)
+  log("Args:", args)
+  local name = args.parameter
+  local recipe = get_controller():recipes()[name]
+  log("name:", name, "enabled:", recipe.enabled, "category:", recipe.category,
+      "hidden:", recipe.hidden, "energy:", recipe.energy, "order:", recipe.order,
+      "group:", recipe.group.name)
+  log("Ingredients:", recipe.ingredients)
+  log("Products:", recipe.products)
+end
+
+local function inventory(args)
+  local controller = get_controller()
+  local inventory = controller:character().get_inventory(defines.inventory[args.parameter])
+  if inventory == nil then
+    log("Unknown inventory")
+  end
+  log("Inventory type:", type, "slots:", #inventory)
+  log("Contents:", inventory.get_contents())
+  log("has_items_inside:", controller:character().has_items_inside())
 end
 
 local function mine(args)
@@ -280,7 +336,7 @@ local function mine(args)
 end
 
 local function walk(args)
-  game.print("Args: [" .. serpent.line(args) .. "]")
+  log("Args:", args)
   dir = defines.direction[args.parameter]
   get_controller():walk(dir)
 end
@@ -326,6 +382,8 @@ commands.add_command("stop", "Stops AI and any running actions in Controller", s
 commands.add_command("pos", "Show current position", player_pos)
 commands.add_command("entities", "Show entities around", entities)
 commands.add_command("all_entities", "Show all known entities", all_entities)
+commands.add_command("inventory", "Show the character's inventory of a given type", inventory)
+commands.add_command("recipe", "Show details about a recipe", recipe)
 commands.add_command("recipes", "Show all known recipes", recipes)
 commands.add_command("mine", "Mine the nearest minable tile", mine)
 commands.add_command("walk", "Walk in the direction given by two relative coordinates", walk)
