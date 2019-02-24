@@ -177,8 +177,6 @@ function Ai:try_to_mine()
     if self.previous_action ~= "mine" then
       log("Reached ore entity", ore_entity.name, pos.norm(ore_entity.position))
       log("L2 distance to entity:", pos.dist_l2(self.controller:position(), ore_entity.position))
-      log("Linf distance to entity:",
-          pos.dist_linf(self.controller:position(), ore_entity.position))
       self.previous_action = "mine"
     end
     return true

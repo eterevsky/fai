@@ -55,6 +55,8 @@ function Pathfinder.new(controller)
   self.closest_node_distance = nil
   -- Encoded position -> distance to goals
   self.steps_cache = {}
+  self.cache_hits = 0
+  self.cache_missed = 0
   self.simulator = WalkSimulator.new(controller)
   return self
 end
@@ -69,17 +71,27 @@ function Pathfinder:_estimate_steps(from)
     return cached_steps
   end
 
-  local speed = 38 / 256
-  local diag_speed = 27 / 256
-  local min_steps = 1E9
-  local sqrt2 = math.sqrt(2)
+  local fromx, fromy = pos.unpack(from)
+  local min_steps = math.huge
 
   for _, goal in ipairs(self.goals) do
-    local dist = pos.dist_l2(from, goal)
-    if dist < self.distance then return 0 end
+    local goalx, goaly = pos.unpack(goal)
+    local dx = math.abs(goalx - fromx)
+    local dy = math.abs(goaly - fromy)
+    if dx < dy then
+      dx, dy = dy, dx
+    end
 
-    local steps = math.ceil((dist - self.distance) / speed)
-    assert(steps > 0)
+    local steps = dy / self.diag_speed + (dx - dy) / self.speed - self.distance_steps
+    steps = math.ceil(steps)
+    if steps <= 0 then
+      local dist = pos.dist_l2(from, goal)
+      if dist <= self.distance then
+        steps = 0
+      else 
+        steps = math.ceil((dist - self.distance) / self.speed)
+      end
+    end
     if steps < min_steps then min_steps = steps end
   end
 
@@ -93,11 +105,22 @@ function Pathfinder:set_goals(goals, distance)
   self.goals = goals
   self.distance = distance
   self.steps_cache = {}
+  self.cache_hits = 0
+  self.cache_missed = 0
+
+  self.speed = 38 / 256
+  self.diag_speed = 27 / 256
+  local diag_steps_distance = distance / (math.sqrt(2) * self.diag_speed)
+  local straight_steps_distance = distance / self.speed
+  self.distance_steps = math.min(diag_steps_distance, straight_steps_distance)
+  
 end
 
 function Pathfinder:clear_goals()
   self.goals = {}
   self.steps_cache = {}
+  self.cache_hits = 0
+  self.cache_missed = 0
 end
 
 function Pathfinder:has_goals()
@@ -173,6 +196,9 @@ function Pathfinder:next_step()
   if self.closest_node_distance ~= nil and
      closest_node:remaining_steps() > self.closest_node_distance then
     -- log("Closest node too far:", closest_node, "(", self.cache_hits, "/", self.cache_misses, ")")
+    if #self.path > 0 then
+      return table.remove(self.path)
+    end
     self.old_visited = visited
     self.old_queue = queue
     return nil
@@ -181,11 +207,9 @@ function Pathfinder:next_step()
   local node = closest_node
   self.closest_node_distance = closest_node:remaining_steps()
   local steps = 0
-  local next_dir = nil
-  local next_pos = nil
+  self.path = {}
   while node ~= nil and node.dir ~= nil do
-    next_pos = node.pos
-    next_dir = node.dir
+    table.insert(self.path, node.dir)
     node = visited[node.prev_enc]
     steps = steps + 1
   end
@@ -195,7 +219,7 @@ function Pathfinder:next_step()
   --     min_cost + steps - start_cost, "(", self.cache_hits, "/", self.cache_misses, ")")
   -- self.simulator:log()
 
-  return next_dir
+  return table.remove(self.path)
 end
 
 return {

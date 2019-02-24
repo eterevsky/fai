@@ -114,6 +114,18 @@ function WalkSimulator:check_prediction()
   if self.predicted_pos == nil then return end
   local player_pos = pos.pack(self.controller:position())
   if player_pos ~= self.predicted_pos then
+    if self.old_pos ~= self.predicted_pos or player_pos == self.predicted_no_collision then
+      log("Previous position:", pos.norm(self.old_pos))
+      log("Expected position:", pos.norm(self.predicted_pos))
+      log("Actual position:", pos.norm(player_pos))
+      log("Expected delta:", pos.delta(self.old_pos, self.predicted_pos))
+      log("Actual delta:", pos.delta(self.old_pos, player_pos))
+      local player_box = box.pad(player_pos, 1.0)
+      for _, entity in ipairs(self.controller:entities_in_box(player_box)) do
+        local entity_box = box.move(entity.prototype.collision_box, entity.position)
+        log(entity.name, entity_box)
+      end
+    end
     assert(self.old_pos == self.predicted_pos)
     assert(player_pos ~= self.predicted_no_collision)
 
@@ -128,10 +140,6 @@ function WalkSimulator:check_prediction()
     assert(dx == 0 or dx == pdx)
     assert(dy == 0 or dy == pdy)
 
-    -- log("Expected position:", pos.norm(self.prediction.expected_pos))
-    -- log("Actual position:", self.controller:position())
-    -- log("Expected delta:", pos.delta(self.prediction.expected_pos, self.prediction.current_pos))
-    -- log("Actual delta:", pos.delta(self.controller:position(), self.prediction.current_pos))
   end
   self.predicted_pos = nil
 end
