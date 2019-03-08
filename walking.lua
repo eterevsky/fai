@@ -74,7 +74,8 @@ function WalkSimulator:_update_cache(player_box)
   self.entity_cache = {}
 
   for _, entity in ipairs(self.controller:entities_in_box(new_box)) do
-    local entity_box = box.move(entity.prototype.collision_box, entity.position)
+    -- local entity_box = box.move(entity.prototype.collision_box, entity.position)
+    local entity_box = entity.bounding_box
     if entity.name ~= "player" and
        entity.prototype.collision_mask["player-layer"] then
       table.insert(self.entity_cache, entity_box)
@@ -96,7 +97,7 @@ function WalkSimulator:walk(from, dir)
   local player_box = box.move(self.char_collision_box, new_pos)
   self:_update_cache(player_box)
   for _, entity_box in ipairs(self.entity_cache) do
-    if box.overlap(player_box, entity_box) then return from end
+    if box.overlap_rotated(player_box, entity_box) then return from end
   end
   return new_pos
 end
@@ -122,8 +123,14 @@ function WalkSimulator:check_prediction()
       log("Actual delta:", pos.delta(self.old_pos, player_pos))
       local player_box = box.pad(player_pos, 1.0)
       for _, entity in ipairs(self.controller:entities_in_box(player_box)) do
-        local entity_box = box.move(entity.prototype.collision_box, entity.position)
-        log(entity.name, entity_box)
+        -- local entity_box = box.move(entity.prototype.collision_box, entity.position)
+        local entity_box = entity.bounding_box
+        log(entity.name, box.norm(entity_box))
+        if entity.name == "cliff" then
+          log("cliff orientation: ", entity.cliff_orientation)
+          log("orientation: ", entity.orientation)
+          log("direction: ", entity.orientation)
+        end
       end
     end
     assert(self.old_pos == self.predicted_pos)

@@ -1,5 +1,6 @@
 local box = require "box"
 local pos = require "pos"
+local pqueue = require "pqueue"
 local util = require "util"
 local log = util.log
 local Pathfinder = require("pathfinder").Pathfinder
@@ -202,7 +203,8 @@ function Ai:update()
     self.walk_simulator:check_prediction()
   end
 
-  self:check_tool()
+-- Doesn't work in 0.16
+--  self:check_tool()
 
   if self:try_to_mine() then return end
 
@@ -272,10 +274,10 @@ end
 
 local function entities()
   local controller = get_controller()
-  local entities = controller:entities(10)
-  game.print("Entities in the 20x20 box:")
+  local entities = controller:entities(5)
+  game.print("Entities in the 10x10 box:")
   for _, e in ipairs(entities) do
-    log(e.name, e.position)
+    log(e.name, e.position, e.bounding_box)
   end
 end
 
@@ -359,6 +361,7 @@ end
 
 local function test()
   box.test_selection_diff()
+  box.test_overlap_rotated()
   pos.test()
   pos.test_pack_delta()
   pqueue.small_test()

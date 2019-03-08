@@ -101,6 +101,17 @@ function Pathfinder:_estimate_steps(from)
   return min_steps
 end
 
+function Pathfinder:_find_coarse_path(start, finish)
+  local visited = {}
+  local queue = PriorityQueue.new()
+  local start = pos.pack(start)
+  start_node = PathNode.new(start, nil, nil, 0, self:_estimate_steps(start))
+  queue:push(start_node)
+
+  while not queue:empty() do
+  end
+end
+
 function Pathfinder:set_goals(goals, distance)
   self.goals = goals
   self.distance = distance
