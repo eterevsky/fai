@@ -1,7 +1,6 @@
 local log = require("util").log
 
--- Binary heap-based priority queue.
-
+-- Binary heap-based priority queue. Returns elements lower-first.
 local PriorityQueue = {}
 PriorityQueue.__index = PriorityQueue
 

@@ -153,6 +153,7 @@ function Ai.new(controller)
 end
 
 function Ai:start()
+  log('Ai:start')
   self.updates = 0
   self.controller:add_listener(util.bind(self, 'update'))
 end
@@ -202,9 +203,6 @@ function Ai:update()
   if self.previous_action == "walk" then
     self.walk_simulator:check_prediction()
   end
-
--- Doesn't work in 0.16
---  self:check_tool()
 
   if self:try_to_mine() then return end
 

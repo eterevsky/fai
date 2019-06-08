@@ -10,9 +10,7 @@ local function unpack(box)
 end
 
 local function norm(box)
-  if box.left_top ~= nil then
-    return box
-  end
+  assert(box ~= nil)
   local x1, y1, x2, y2 = unpack(box)
   return {
     left_top = pos.norm(x1, y1),

@@ -2,16 +2,19 @@ local box = require "box"
 local log = require("util").log
 local pos = require("pos")
 
+local SPEED = 38 / 256
+local DIAG_SPEED = 27 / 256
+
 -- Simulate walking and collisions
 local DIR_TO_VELOCITY = {}
-DIR_TO_VELOCITY[defines.direction.north] = pos.pack_delta(0, -38 / 256)
-DIR_TO_VELOCITY[defines.direction.northeast]	= pos.pack_delta(27 / 256, -27 / 256)
-DIR_TO_VELOCITY[defines.direction.east] = pos.pack_delta(38 / 256, 0)
-DIR_TO_VELOCITY[defines.direction.southeast]	= pos.pack_delta(27 / 256, 27 / 256)
-DIR_TO_VELOCITY[defines.direction.south]	= pos.pack_delta(0, 38 / 256)
-DIR_TO_VELOCITY[defines.direction.southwest]	= pos.pack_delta(-27 / 256, 27 / 256)
-DIR_TO_VELOCITY[defines.direction.west] = pos.pack_delta(-38 / 256, 0)
-DIR_TO_VELOCITY[defines.direction.northwest] = pos.pack_delta(-27 / 256, -27 / 256)
+DIR_TO_VELOCITY[defines.direction.north] = pos.pack_delta(0, -SPEED)
+DIR_TO_VELOCITY[defines.direction.northeast]	= pos.pack_delta(DIAG_SPEED, -DIAG_SPEED)
+DIR_TO_VELOCITY[defines.direction.east] = pos.pack_delta(SPEED, 0)
+DIR_TO_VELOCITY[defines.direction.southeast]	= pos.pack_delta(DIAG_SPEED, DIAG_SPEED)
+DIR_TO_VELOCITY[defines.direction.south]	= pos.pack_delta(0, SPEED)
+DIR_TO_VELOCITY[defines.direction.southwest]	= pos.pack_delta(-DIAG_SPEED, DIAG_SPEED)
+DIR_TO_VELOCITY[defines.direction.west] = pos.pack_delta(-SPEED, 0)
+DIR_TO_VELOCITY[defines.direction.northwest] = pos.pack_delta(-DIAG_SPEED, -DIAG_SPEED)
 
 local DIRECTIONS = {}
 for dir, _ in pairs(DIR_TO_VELOCITY) do
@@ -74,9 +77,10 @@ function WalkSimulator:_update_cache(player_box)
   self.entity_cache = {}
 
   for _, entity in ipairs(self.controller:entities_in_box(new_box)) do
-    -- local entity_box = box.move(entity.prototype.collision_box, entity.position)
-    local entity_box = entity.bounding_box
-    if entity.name ~= "player" and
+    local entity_box = box.move(entity.prototype.collision_box, entity.position)
+    -- local entity_box = entity.bounding_box
+    -- log("entity ", entity.name, " ", box.norm(entity_box))
+    if entity.name ~= "character" and
        entity.prototype.collision_mask["player-layer"] then
       table.insert(self.entity_cache, entity_box)
     end
@@ -90,14 +94,20 @@ end
 function WalkSimulator:walk(from, dir)
   self.walk_calls = self.walk_calls + 1
   local new_pos = self:walk_no_collisions(from, dir)
+  -- log("no collisions new_pos = ", pos.norm(new_pos))
   local new_tile = self.controller:get_tile(new_pos)
   if new_tile.collides_with("player-layer") then
+    -- log("new_tile collide ", new_tile)
     return from
   end
   local player_box = box.move(self.char_collision_box, new_pos)
   self:_update_cache(player_box)
   for _, entity_box in ipairs(self.entity_cache) do
-    if box.overlap_rotated(player_box, entity_box) then return from end
+    if box.overlap_rotated(player_box, entity_box) then
+      -- log("collision between player box ", box.norm(player_box),
+      --     " and entity box ", box.norm(entity_box))
+      return from
+    end
   end
   return new_pos
 end
@@ -123,8 +133,8 @@ function WalkSimulator:check_prediction()
       log("Actual delta:", pos.delta(self.old_pos, player_pos))
       local player_box = box.pad(player_pos, 1.0)
       for _, entity in ipairs(self.controller:entities_in_box(player_box)) do
-        -- local entity_box = box.move(entity.prototype.collision_box, entity.position)
-        local entity_box = entity.bounding_box
+        local entity_box = box.move(entity.prototype.collision_box, entity.position)
+        -- local entity_box = entity.bounding_box
         log(entity.name, box.norm(entity_box))
         if entity.name == "cliff" then
           log("cliff orientation: ", entity.cliff_orientation)
@@ -152,7 +162,9 @@ function WalkSimulator:check_prediction()
 end
 
 return {
+  DIAG_SPEED = DIAG_SPEED,
   DIRECTIONS = DIRECTIONS,
+  SPEED = SPEED,
   WalkSimulator = WalkSimulator,
   test = test,
 }

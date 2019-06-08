@@ -1,16 +1,20 @@
-local log = require("util").log
+local util = require("util")
+local log = util.log
 local pos = require "pos"
 local pqueue = require "pqueue"
 local PriorityQueue = pqueue.PriorityQueue
+
 local walking = require "walking"
-local WalkSimulator = walking.WalkSimulator
+local DIAG_SPEED = walking.DIAG_SPEED
 local DIRECTIONS = walking.DIRECTIONS
+local SPEED = walking.SPEED
+local WalkSimulator = walking.WalkSimulator
 
 local PathNode = {}
 PathNode.__index = PathNode
 
 -- steps is the number of steps already taken
--- cost is the sum of `steps` and the low estimate for the remaining part
+-- cost is the sum of `steps` plus the low estimate for the remaining part
 function PathNode.new(position, prev_enc, dir, steps, cost)
   local self = {
     pos = position,
@@ -40,6 +44,18 @@ PathNode.__le = function(a, b)
   return a.cost <= b.cost
 end
 
+-- local CoarsePathfinder = {}
+-- CoarsePathfinder.__index = CoarsePathfinder
+
+-- function CoarsePathfinder.new(controller)
+--   local self = {}
+--   setmetatable(self, CoarsePathfinder)
+--   self.controller = controller
+--   self.goals = {}
+--   self.distance = 1.0
+--   self.steps_cache = {}
+-- end
+
 -- Pathfinder implements walking to reach certain goals.
 local Pathfinder = {}
 Pathfinder.__index = Pathfinder
@@ -48,18 +64,39 @@ function Pathfinder.new(controller)
   local self = {}
   setmetatable(self, Pathfinder)
   self.controller = controller
+  -- self.coarse = CoarsePathfinder.new(controller)
   self.goals = {}
   self.distance = 1.0
+
   -- Every next step should lead to the closest node that is no further from the goals than on the
   -- previous step
   self.closest_node_distance = nil
+
   -- Encoded position -> distance to goals
   self.steps_cache = {}
   self.cache_hits = 0
-  self.cache_missed = 0
+  self.cache_misses = 0
+
+  -- A reversed list of several next moves.
+  self.reversed_path = {}
+
   self.simulator = WalkSimulator.new(controller)
   return self
 end
+
+-- function Pathfinder:_find_coarse_path(start, finish)
+--   local visited = {}
+--   local queue = PriorityQueue.new()
+--   local start = pos.pack(start)
+--   start_node = PathNode.new(start, nil, nil, 0, self:_estimate_steps(start))
+--   queue:push(start_node)
+
+--   while not queue:empty() do
+--   end
+-- end
+
+-- function Pathfinder:_estimate_from_coarse_path(start)
+-- end
 
 -- Low estimate for the number of ticks to reach a point within the given distance from any of the
 -- goals.
@@ -69,6 +106,8 @@ function Pathfinder:_estimate_steps(from)
   if cached_steps ~= nil then
     self.cache_hits = self.cache_hits + 1
     return cached_steps
+  else
+    self.cache_misses = self.cache_misses + 1
   end
 
   local fromx, fromy = pos.unpack(from)
@@ -82,14 +121,14 @@ function Pathfinder:_estimate_steps(from)
       dx, dy = dy, dx
     end
 
-    local steps = dy / self.diag_speed + (dx - dy) / self.speed - self.distance_steps
+    local steps = dy / DIAG_SPEED + (dx - dy) / SPEED - self.goal_radius_steps
     steps = math.ceil(steps)
     if steps <= 0 then
       local dist = pos.dist_l2(from, goal)
-      if dist <= self.distance then
+      if dist <= self.goal_radius_steps then
         steps = 0
       else 
-        steps = math.ceil((dist - self.distance) / self.speed)
+        steps = math.ceil((dist - self.distance) / SPEED)
       end
     end
     if steps < min_steps then min_steps = steps end
@@ -101,30 +140,14 @@ function Pathfinder:_estimate_steps(from)
   return min_steps
 end
 
-function Pathfinder:_find_coarse_path(start, finish)
-  local visited = {}
-  local queue = PriorityQueue.new()
-  local start = pos.pack(start)
-  start_node = PathNode.new(start, nil, nil, 0, self:_estimate_steps(start))
-  queue:push(start_node)
-
-  while not queue:empty() do
-  end
-end
-
-function Pathfinder:set_goals(goals, distance)
+function Pathfinder:set_goals(goals, goal_radius)
   self.goals = goals
-  self.distance = distance
+  self.goal_radius = goal_radius
+  self.goal_radius_steps = math.floor(goal_radius / SPEED)
+  
   self.steps_cache = {}
   self.cache_hits = 0
-  self.cache_missed = 0
-
-  self.speed = 38 / 256
-  self.diag_speed = 27 / 256
-  local diag_steps_distance = distance / (math.sqrt(2) * self.diag_speed)
-  local straight_steps_distance = distance / self.speed
-  self.distance_steps = math.min(diag_steps_distance, straight_steps_distance)
-  
+  self.cache_misses = 0
 end
 
 function Pathfinder:clear_goals()
@@ -138,41 +161,53 @@ function Pathfinder:has_goals()
   return #self.goals > 0
 end
 
--- A* search that finds the fastest path to any position from goals, ending within the distance of
--- it.
+-- Initialize the queue and visited table, or use them from the previous iteration. If the char
+-- has moved, the queue is invalidated.
+function Pathfinder:_init_queue(start_pos)
+  if self.visited ~= nil and self.queue ~= nil then
+    local start_node = self.visited[start_pos]
+    if start_node ~= nil and start_node.steps == 0 then
+      log("Inherited the queue with", self.queue:size(),
+          "elements and", util.table_size(self.visited), "visited nodes")
+      return
+    end
+  end
+
+  self.queue = PriorityQueue.new()
+  start_node = PathNode.new(start_pos, nil, nil, 0, start_cost)
+  self.queue:push(start_node)
+  -- visited position -> PathNode
+  self.visited = {}
+  -- log("Creating new queue with", self.queue:size(),
+  -- "elements and", util.table_size(self.visited), "visited nodes")
+
+  self.simulator:reset()
+end
+
+function Pathfinder:_build_path(to_node)
+  local node = to_node
+  self.reversed_path = {}
+  while node ~= nil and node.dir ~= nil do
+    table.insert(self.reversed_path, node.dir)
+    node = self.visited[node.prev_enc]
+  end
+end
+
+-- A* search that finds the fastest path to any position from goals, ending within the goal_radius
+-- of it.
 function Pathfinder:next_step()
   self.cache_hits = 0
   self.cache_misses = 0
-  local start_pos = self.controller:position()
-  local start_pos = pos.pack(start_pos)
-  local start_cost = self:_estimate_steps(start_pos)
 
-  local queue, visited
-  if self.old_queue ~= nil then
-    queue = self.old_queue
-    self.old_queue = nil
-    visited = self.old_visited
-    self.old_visited = nil
-    -- log("Inherited the queue with", queue:size(), "elements and", util.table_size(visited),
-    --     "visited nodes")
-  else
-    self.simulator:reset()
-    queue = PriorityQueue.new()
-    start_node = PathNode.new(start_pos, nil, nil, 0, start_cost)
-    queue:push(start_node)
-    -- visited position -> PathNode
-    visited = {}
-  end
-
+  local start_pos = pos.pack(self.controller:position())
+  local min_rem_steps = self:_estimate_steps(start_pos)
+  self:_init_queue(start_pos)
+  local queue, visited = self.queue, self.visited
   local counter = 0
+  local closest_node
 
-  local closest_node = nil
-  local min_cost = start_cost
-  local last_node
-
-  while not queue:empty() and counter < 256 and min_cost > 0 do
+  while not queue:empty() and counter < 128 and min_rem_steps > 0 do
     local node = queue:pop()
-    last_node = node
     assert(node ~= nil)
     if visited[node.pos] == nil then
       visited[node.pos] = node
@@ -181,14 +216,14 @@ function Pathfinder:next_step()
       for _, dir in ipairs(DIRECTIONS) do
         local new_pos = self.simulator:walk(node.pos, dir)
         if new_pos ~= node.pos then
-          local new_cost = self:_estimate_steps(new_pos)
+          local new_rem_steps = self:_estimate_steps(new_pos)
           local new_node = PathNode.new(new_pos, node.pos, dir, node.steps + 1,
-                                        new_cost + node.steps + 1)
-          if new_cost < min_cost then
+                                        new_rem_steps + node.steps + 1)
+          if new_rem_steps < min_rem_steps then
             closest_node = new_node
-            min_cost = new_cost
+            min_rem_steps = new_rem_steps
           end
-          if new_cost == 0 then break end
+          if new_rem_steps == 0 then break end
 
           queue:push(new_node)
         end
@@ -197,40 +232,31 @@ function Pathfinder:next_step()
   end
 
   if closest_node == nil then
-    -- log("Not found. min_cost =", min_cost, "(", self.cache_hits, "/", self.cache_misses, ")")
-    -- self.simulator:log()
-    self.old_visited = visited
-    self.old_queue = queue
+    log("Not found. #queue = ", #queue, ", min_rem_steps = ", min_rem_steps,
+        "(cache: ", self.cache_hits, "/", self.cache_misses, ")")
     return nil
   end
 
   if self.closest_node_distance ~= nil and
      closest_node:remaining_steps() > self.closest_node_distance then
-    -- log("Closest node too far:", closest_node, "(", self.cache_hits, "/", self.cache_misses, ")")
-    if #self.path > 0 then
-      return table.remove(self.path)
+    -- log("Closest node too far:", closest_node,
+    --     "(cache: ", self.cache_hits, "/", self.cache_misses, ")")
+    if #self.reversed_path > 0 then
+      return table.remove(self.reversed_path)
     end
     self.old_visited = visited
     self.old_queue = queue
     return nil
   end
 
-  local node = closest_node
   self.closest_node_distance = closest_node:remaining_steps()
-  local steps = 0
-  self.path = {}
-  while node ~= nil and node.dir ~= nil do
-    table.insert(self.path, node.dir)
-    node = visited[node.prev_enc]
-    steps = steps + 1
-  end
+  self:_build_path(closest_node)
 
-  log(steps, "+", min_cost, "steps (", self.cache_hits, "/", self.cache_misses, ")")
-  -- log(steps, " steps + estimation ", min_cost, " = initial estimation + ",
-  --     min_cost + steps - start_cost, "(", self.cache_hits, "/", self.cache_misses, ")")
-  -- self.simulator:log()
 
-  return table.remove(self.path)
+  log(#self.reversed_path, " + ", min_rem_steps, " steps",
+      " (cache: ", self.cache_hits, "/", self.cache_misses, ")")
+
+  return table.remove(self.reversed_path)
 end
 
 return {
