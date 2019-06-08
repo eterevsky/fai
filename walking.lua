@@ -77,8 +77,9 @@ function WalkSimulator:_update_cache(player_box)
   self.entity_cache = {}
 
   for _, entity in ipairs(self.controller:entities_in_box(new_box)) do
-    local entity_box = box.move(entity.prototype.collision_box, entity.position)
-    -- local entity_box = entity.bounding_box
+    -- local entity_box = collision_box(entity)
+    -- local entity_box = box.move(entity.prototype.collision_box, entity.position)
+    local entity_box = entity.bounding_box
     -- log("entity ", entity.name, " ", box.norm(entity_box))
     if entity.name ~= "character" and
        entity.prototype.collision_mask["player-layer"] then
@@ -118,12 +119,18 @@ function WalkSimulator:register_prediction(dir)
   self.prediction_dir = dir
   self.predicted_pos = self:walk(player_pos, dir)
   self.predicted_no_collision = self:walk_no_collisions(player_pos, dir)
+  self.previous_tick = self.controller:tick()
 end
 
 function WalkSimulator:check_prediction()
   self:reset()  
   if self.predicted_pos == nil then return end
   local player_pos = pos.pack(self.controller:position())
+  if self.controller:tick() ~= self.previous_tick + 1 then
+    log("Can't check prediction not from the previous step. previous_tick = ",
+        self.previous_tick, " current tick = ", self.controller:tick())
+    return
+  end
   if player_pos ~= self.predicted_pos then
     if self.old_pos ~= self.predicted_pos or player_pos == self.predicted_no_collision then
       log("Previous position:", pos.norm(self.old_pos))

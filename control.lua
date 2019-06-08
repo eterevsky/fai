@@ -131,6 +131,10 @@ function Controller:remove_listener(callback)
   end
 end
 
+function Controller:tick()
+  return game.tick
+end
+
 function Controller:on_tick()
   for _, listener in ipairs(self.listeners) do
     listener(self)
@@ -275,7 +279,8 @@ local function entities()
   local entities = controller:entities(5)
   game.print("Entities in the 10x10 box:")
   for _, e in ipairs(entities) do
-    log(e.name, e.position, e.bounding_box)
+    log(e.name, " position: ", e.position, " bounding: ", e.bounding_box,
+        " collision: ", e.prototype.collision_box, " orientation: ", e.orientation)
   end
 end
 
