@@ -381,6 +381,16 @@ local function env()
   log(_VERSION)
 end
 
+local function enable_log()
+  util.enable_log()
+  log("Enabling logging")
+end
+
+local function disable_log()
+  log("Disabling logging")
+  util.disable_log()
+end
+
 commands.add_command("start", "Give AI control over the player", start)
 commands.add_command("stop", "Stops AI and any running actions in Controller", stop)
 commands.add_command("pos", "Show current position", player_pos)
@@ -394,3 +404,5 @@ commands.add_command("walk", "Walk in the direction given by two relative coordi
 commands.add_command("test", "Run unit tests", test)
 commands.add_command("test-walk", "Investigate how walking works", test_walk)
 commands.add_command("env", "Show all variable in global environment", env)
+commands.add_command("disable_log", "Disable AI logging", disable_log)
+commands.add_command("enable_log", "Enable AI logging", enable_log)

@@ -1,4 +1,18 @@
+local _log_enabled = true
+
+local function enable_log() 
+  _log_enabled = true
+end
+
+local function disable_log()
+  _log_enabled = false
+end
+
 local function log(...)
+  if not _log_enabled then
+    return
+  end
+  
   local s = ""
   local first = true
   for _, arg in ipairs{...} do
@@ -30,6 +44,8 @@ local function table_size(t)
 end
 
 return {
+    enable_log = enable_log,
+    disable_log = disable_log,
     log = log,
     bind = bind,
     table_size = table_size
