@@ -1,5 +1,6 @@
 local log = require("util").log
 local pos = require("pos")
+local tests = require "tests"
 
 local function unpack(box)
   local left_top = box.left_top or box[1]
@@ -160,7 +161,7 @@ local function selection_diff(box1, box2)
   return {x = x, y = y}
 end
 
-local function test_selection_diff()
+tests.register_test("box.test_selection_diff", function()
   local box1 = {{1, 2}, {2, 3}}
   local box2 = {{0, 1}, {3, 4}}
   local p = selection_diff(box1, box2)
@@ -183,11 +184,9 @@ local function test_selection_diff()
   assert(p ~= nil)
   assert(contains(box1, p))
   assert(not contains(box2, p))
+end)
 
-  log("box.test_selection_diff ok")
-end
-
-local function test_overlap_rotated()
+tests.register_test("box.test_overlap_rotated", function()
   local box1 = {{-1, -1}, {1, 1}}
   local box2 = {left_top = {0.9, 0.9}, right_bottom = {3.1, 3.1}, orientation = 0}
   assert(overlap_rotated(box1, box2))
@@ -202,9 +201,7 @@ local function test_overlap_rotated()
   assert(not overlap_rotated(box1, box3))
   box3.orientation = 1/8
   assert(overlap_rotated(box1, box3))
-
-  log("box.test_overlap_rotated ok")
-end
+end)
 
 return {
   norm = norm,
@@ -217,6 +214,4 @@ return {
   pad = pad,
   unpack = unpack,
   selection_diff = selection_diff, 
-  test_overlap_rotated = test_overlap_rotated,
-  test_selection_diff = test_selection_diff,
 }

@@ -1,4 +1,4 @@
-local util = require("util")
+local util = require "util"
 local log = util.log
 local pos = require "pos"
 local pqueue = require "pqueue"

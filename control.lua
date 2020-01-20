@@ -4,6 +4,7 @@ local pqueue = require "pqueue"
 local util = require "util"
 local log = util.log
 local Pathfinder = require("pathfinder").Pathfinder
+local tests = require "tests"
 local walking = require "walking"
 local WalkSimulator = walking.WalkSimulator
 local DIRECTIONS = walking.DIRECTIONS
@@ -363,12 +364,7 @@ local function test_walk(args)
 end
 
 local function test()
-  box.test_selection_diff()
-  box.test_overlap_rotated()
-  pos.test()
-  pos.test_pack_delta()
-  pqueue.small_test()
-  pqueue.test()
+  tests.run_tests()
 end
 
 local function env()

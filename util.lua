@@ -1,3 +1,8 @@
+local game = game
+if game == nil then
+  game = require "mock_game"
+end
+
 local function log(...)
   local s = ""
   local first = true

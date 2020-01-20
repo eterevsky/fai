@@ -1,4 +1,5 @@
 local log = require("util").log
+local tests = require "tests"
 
 -- Binary heap-based priority queue. Returns elements lower-first.
 local PriorityQueue = {}
@@ -73,7 +74,7 @@ function PriorityQueue:_sift_up(idx)
   end
 end
 
-local function small_test()
+tests.register_test("pqueue.small", function()
   local queue = PriorityQueue.new()
   queue:push(2)
   queue:push(1)
@@ -85,11 +86,9 @@ local function small_test()
   assert(queue:pop() == -1)
   assert(queue:pop() == 3)
   assert(queue:size() == 1)
+end)
 
-  log("pqueue.small_test ok")
-end
-
-local function test()
+tests.register_test("pqueue.test", function()
   local elements = {}
   local pq = PriorityQueue.new()
   assert(pq:empty())
@@ -140,10 +139,8 @@ local function test()
   assert(pq:empty())
 
   log("pqueue.test ok")
-end
+end)
 
 return {
   PriorityQueue = PriorityQueue,
-  small_test = small_test,
-  test = test,
 }

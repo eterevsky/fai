@@ -1,4 +1,5 @@
 local log = require("util").log
+local tests = require "tests"
 
 local RADIX = 2^20
 local HALF_RADIX = 2^19
@@ -104,9 +105,9 @@ local function test()
   local pos = norm({12, 34})
   assert(pos.x == 12)
   assert(pos.y == 34)
-
-  log("pos.test ok")
 end
+
+tests.register_test("pos.test", test)
 
 local function test_pack_delta()
   for _i = 1, 10 do
@@ -121,9 +122,9 @@ local function test_pack_delta()
   assert(xn == x + dx)
   assert(yn == y + dy)
   end
-
-  log("pos.test_pack_delta ok")
 end
+
+tests.register_test("pos.test_pack_delta", test_pack_delta)
 
 return {
   pack = pack,
@@ -133,6 +134,4 @@ return {
   dist_l2 = dist_l2,
   dist_linf = dist_linf,
   pack_delta = pack_delta,
-  test = test,
-  test_pack_delta = test_pack_delta,
 }
