@@ -160,11 +160,12 @@ end
 function Ai:start()
   log('Ai:start')
   self.updates = 0
-  self.controller:add_listener(util.bind(self, 'update'))
+  self.tick_listener = util.bind(self, 'update')
+  self.controller:add_listener(self.tick_listener)
 end
 
 function Ai:stop()
-  self.controller:stop()
+  self.controller:remove_listener(self.tick_listener)
 end
 
 function Ai:try_to_mine()
@@ -192,21 +193,9 @@ function Ai:try_to_mine()
   return false
 end
 
-function Ai:check_tool()
-  local tools = self.controller:get_inventory(defines.inventory.player_tools)
-  if not tools.is_empty() then return end
-  local crafting_queue = self.controller:crafting_queue()
-  if crafting_queue ~= nil then
-    for _, crafting_item in ipairs(crafting_queue) do
-      if crafting_item.recipe == "iron-axe" then return end
-    end
-  end
-  self.controller:craft("iron-axe")
-end
-
 function Ai:update()
   if self.previous_action == "walk" then
-    self.walk_simulator:check_prediction()
+    if not self.walk_simulator:check_prediction() then return self:stop() end
   end
 
   if self:try_to_mine() then return end
@@ -340,27 +329,39 @@ local function mine(args)
 end
 
 local function walk(args)
-  log("Args:", args)
   dir = defines.direction[args.parameter]
-  get_controller():walk(dir)
+  log("Walking in direction:", dir)
+
+  local controller = get_controller()
+  local simulator = WalkSimulator.new(controller)
+
+  local function walk(controller)
+    if not simulator:check_prediction() then
+      controller:remove_all_listeners()
+    end
+
+    controller:walk(dir)
+    simulator:register_prediction(dir)
+  end
+
+  controller:add_listener(walk)
 end
 
-local function test_walk(args)
+local function random_walk(args)
   local controller = get_controller()
-  local simulator = WalkSimulator.new(get_controller())
-  simulator:register_prediction()
+  local simulator = WalkSimulator.new(controller)
 
-  log(DIRECTIONS)
-
-  local function continue(controller)
-    simulator:check_prediction()
+  local function walk(controller)
+    if not simulator:check_prediction() then
+      controller:remove_all_listeners()
+    end
 
     local dir = DIRECTIONS[math.random(#DIRECTIONS)]
     controller:walk(dir)
     simulator:register_prediction(dir)
   end
 
-  controller:add_listener(continue)
+  controller:add_listener(walk)
 end
 
 local function test()
@@ -377,14 +378,25 @@ local function env()
   log(_VERSION)
 end
 
-local function enable_log()
-  util.enable_log()
-  log("Enabling logging")
-end
-
-local function disable_log()
-  log("Disabling logging")
-  util.disable_log()
+local function set_log(args)
+  local enabled = true
+  if args.parameter ~= nil then
+    local param = string.lower(args.parameter)
+    if param == "1" or param == "on" or param == "true" then
+      enabled = true
+    elseif param == "0" or param == "off" or param == "false" then
+      enabled = false
+    else
+      game.print("Usage: /log [on|off]\n")
+      return
+    end
+  end
+  util.set_log(true)
+  if enabled then
+    game.print('Logging enabled')
+  else
+    game.print('Logging disabled')
+  end
 end
 
 commands.add_command("start", "Give AI control over the player", start)
@@ -396,9 +408,8 @@ commands.add_command("inventory", "Show the character's inventory of a given typ
 commands.add_command("recipe", "Show details about a recipe", recipe)
 commands.add_command("recipes", "Show all known recipes", recipes)
 commands.add_command("mine", "Mine the nearest minable tile", mine)
-commands.add_command("walk", "Walk in the direction given by two relative coordinates", walk)
+commands.add_command("walk", "Walk in the given direction (n, nw, w, ...)", walk)
 commands.add_command("test", "Run unit tests", test)
-commands.add_command("test-walk", "Investigate how walking works", test_walk)
+commands.add_command("random-walk", "Investigate how walking works", random_walk)
 commands.add_command("env", "Show all variable in global environment", env)
-commands.add_command("disable_log", "Disable AI logging", disable_log)
-commands.add_command("enable_log", "Enable AI logging", enable_log)
+commands.add_command("log", "Enable/disable AI logging. Args: 1/true/on to enable, 0/false/off to disable.", set_log)

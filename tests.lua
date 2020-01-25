@@ -1,6 +1,3 @@
-if game == nil then
-    local game = require "mock_game"
-end
 local log = require("util").log
 
 local tests = {}

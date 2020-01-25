@@ -54,10 +54,10 @@ local function overlap(box1, box2)
   local box1 = norm(box1)
   local box2 = norm(box2)
 
-  return box1.left_top.x < box2.right_bottom.x and
-         box1.right_bottom.x > box2.left_top.x and
-         box1.left_top.y < box2.right_bottom.y and
-         box1.right_bottom.y > box2.left_top.y
+  return box1.left_top.x <= box2.right_bottom.x and
+         box1.right_bottom.x >= box2.left_top.x and
+         box1.left_top.y <= box2.right_bottom.y and
+         box1.right_bottom.y >= box2.left_top.y
 end
 
 local function overlap_rotated(box1, box2_rotated)
@@ -68,11 +68,21 @@ local function overlap_rotated(box1, box2_rotated)
   local angle = 2 * math.pi * box2_rotated.orientation
   local cos = math.cos(angle)
   local sin = math.sin(angle)
+
+  local eps = 1/1024
   
   local ax1, ay1, ax2, ay2 = unpack(box1)
+  ax1 = ax1 - eps
+  ay1 = ay1 - eps
+  ax2 = ax2 + eps
+  ay2 = ay2 + eps
 
   -- Before rotation
   local bx1, by1, bx2, by2 = unpack(box2_rotated)
+  bx1 = bx1 - eps
+  by1 = by1 - eps
+  bx2 = bx2 + eps
+  by2 = by2 + eps
 
   -- Center of box2
   local cx, cy = (bx1 + bx2) / 2, (by1 + by2) / 2
@@ -108,8 +118,8 @@ local function overlap_rotated(box1, box2_rotated)
   local rp4 = cos * rx4 + sin * ry4
 
   -- Check that the points are separated
-  if math.max(ap1, ap2, ap3, ap4) <= math.min(rp1, rp2, rp3, rp4) or
-     math.max(rp1, rp2, rp3, rp4) <= math.min(ap1, ap2, ap3, ap4) then return false end
+  if math.max(ap1, ap2, ap3, ap4) < math.min(rp1, rp2, rp3, rp4) or
+     math.max(rp1, rp2, rp3, rp4) < math.min(ap1, ap2, ap3, ap4) then return false end
 
   -- Projections of box1 on to (-sin, cos)
   ap1 = -sin * ax1 + cos * ay1
@@ -124,8 +134,8 @@ local function overlap_rotated(box1, box2_rotated)
   rp4 = -sin * rx4 + cos * ry4
   
   -- Check that the points are separated
-  if math.max(ap1, ap2, ap3, ap4) <= math.min(rp1, rp2, rp3, rp4) or
-     math.max(rp1, rp2, rp3, rp4) <= math.min(ap1, ap2, ap3, ap4) then return false end
+  if math.max(ap1, ap2, ap3, ap4) < math.min(rp1, rp2, rp3, rp4) or
+     math.max(rp1, rp2, rp3, rp4) < math.min(ap1, ap2, ap3, ap4) then return false end
 
   return true
 end
