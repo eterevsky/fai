@@ -89,8 +89,8 @@ function WalkSimulator:_update_cache(player_box)
 end
 
 -- Assuming that the character is in the position `from`, simulate walking for one tick in the
--- direction (dx, dy). Instead of simulating the game behavior regarding collisions, in case we
--- collide with anything, we return the starting position.
+-- direction dir. Instead of simulating the game behavior regarding collisions, in case we
+-- collide with anything, we stay in the starting position.
 -- Returns the new position.
 function WalkSimulator:walk(from, dir)
   self.walk_calls = self.walk_calls + 1
