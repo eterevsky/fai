@@ -3,12 +3,18 @@ local log = util.log
 local pos = require "pos"
 local pqueue = require "pqueue"
 local PriorityQueue = pqueue.PriorityQueue
-
+local PointSet = require("pointset").PointSet
 local walking = require "walking"
+
 local DIAG_SPEED = walking.DIAG_SPEED
 local DIRECTIONS = walking.DIRECTIONS
 local SPEED = walking.SPEED
 local WalkSimulator = walking.WalkSimulator
+local _enable_pointset = false
+
+local function enable_pointset(value)
+  _enable_pointset = value
+end
 
 local PathNode = {}
 PathNode.__index = PathNode
@@ -66,6 +72,7 @@ function Pathfinder.new(controller)
   self.controller = controller
   -- self.coarse = CoarsePathfinder.new(controller)
   self.goals = {}
+  self.goals_pset = nil
   self.distance = 1.0
 
   -- Every next step should lead to the closest node that is no further from the goals than on the
@@ -113,25 +120,30 @@ function Pathfinder:_estimate_steps(from)
   local fromx, fromy = pos.unpack(from)
   local min_steps = math.huge
 
-  for _, goal in ipairs(self.goals) do
-    local goalx, goaly = pos.unpack(goal)
-    local dx = math.abs(goalx - fromx)
-    local dy = math.abs(goaly - fromy)
-    if dx < dy then
-      dx, dy = dy, dx
-    end
-
-    local steps = dy / DIAG_SPEED + (dx - dy) / SPEED - self.goal_radius_steps
-    steps = math.ceil(steps)
-    if steps <= 0 then
-      local dist = pos.dist_l2(from, goal)
-      if dist <= self.goal_radius_steps then
-        steps = 0
-      else 
-        steps = math.ceil((dist - self.distance) / SPEED)
+  if _enable_pointset then
+    local dist = self.goals_pset:min_l2_dist(from)
+    min_steps = math.ceil((dist - self.goal_radius) / SPEED)
+  else
+    for _, goal in ipairs(self.goals) do
+      local goalx, goaly = pos.unpack(goal)
+      local dx = math.abs(goalx - fromx)
+      local dy = math.abs(goaly - fromy)
+      if dx < dy then
+        dx, dy = dy, dx
       end
+
+      local steps = dy / DIAG_SPEED + (dx - dy) / SPEED - self.goal_radius_steps
+      steps = math.ceil(steps)
+      if steps <= 0 then
+        local dist = pos.dist_l2(from, goal)
+        if dist <= self.goal_radius_steps then
+          steps = 0
+        else 
+          steps = math.ceil((dist - self.distance) / SPEED)
+        end
+      end
+      if steps < min_steps then min_steps = steps end
     end
-    if steps < min_steps then min_steps = steps end
   end
 
   self.cache_misses = self.cache_misses + 1
@@ -142,6 +154,7 @@ end
 
 function Pathfinder:set_goals(goals, goal_radius)
   self.goals = goals
+  self.goals_pset = PointSet.new(goals)
   self.goal_radius = goal_radius
   self.goal_radius_steps = math.floor(goal_radius / SPEED)
   
@@ -152,6 +165,7 @@ end
 
 function Pathfinder:clear_goals()
   self.goals = {}
+  self.goals_pset = nil
   self.steps_cache = {}
   self.cache_hits = 0
   self.cache_missed = 0
@@ -206,7 +220,7 @@ function Pathfinder:next_step()
   local counter = 0
   local closest_node
 
-  while not queue:empty() and counter < 128 and min_rem_steps > 0 do
+  while not queue:empty() and counter < 512 and min_rem_steps > 0 do
     local node = queue:pop()
     assert(node ~= nil)
     if visited[node.pos] == nil then
@@ -260,5 +274,6 @@ function Pathfinder:next_step()
 end
 
 return {
-  Pathfinder = Pathfinder   
+  Pathfinder = Pathfinder,
+  enable_pointset = enable_pointset,
 }

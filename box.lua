@@ -26,6 +26,10 @@ local function new_norm(x1, y1, x2, y2)
   }
 end
 
+local function new_pack(x1, y1, x2, y2)
+  return { pos.pack(x1, y1), pos.pack(x2, y2) }
+end
+
 -- Move a box from (0, 0) to center.
 local function move(box, center)
   local x1, y1, x2, y2 = unpack(box)
@@ -216,6 +220,7 @@ end)
 return {
   norm = norm,
   new_norm = new_norm,
+  new_pack = new_pack,
   move = move,
   contains = contains,
   covers = covers,

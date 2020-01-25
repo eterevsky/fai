@@ -3,6 +3,7 @@ local pos = require "pos"
 local pqueue = require "pqueue"
 local util = require "util"
 local log = util.log
+local pathfinder = require "pathfinder"
 local Pathfinder = require("pathfinder").Pathfinder
 local tests = require "tests"
 local walking = require "walking"
@@ -413,3 +414,7 @@ commands.add_command("test", "Run unit tests", test)
 commands.add_command("random-walk", "Investigate how walking works", random_walk)
 commands.add_command("env", "Show all variable in global environment", env)
 commands.add_command("log", "Enable/disable AI logging. Args: 1/true/on to enable, 0/false/off to disable.", set_log)
+commands.add_command("enable_pointset", "", function()
+  pathfinder.enable_pointset(true)
+  log("pointset enabled")
+end)
