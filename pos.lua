@@ -78,6 +78,11 @@ local function pack_delta(dx, dy)
   return p - p0
 end
 
+local function delta_len(delta)
+  local x, y = unpack(delta + pack(0, 0))
+  return math.sqrt(x * x + y * y)
+end
+
 local function test()
   for x = -10, 10, 239/256 do
     for y = -10, 10, 239/256 do
@@ -134,4 +139,5 @@ return {
   dist_l2 = dist_l2,
   dist_linf = dist_linf,
   pack_delta = pack_delta,
+  delta_len = delta_len,
 }

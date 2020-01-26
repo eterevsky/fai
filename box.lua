@@ -37,8 +37,33 @@ local function move(box, center)
   return {pos.pack(x + x1, y + y1), pos.pack(x + x2, y + y2)}
 end
 
+local function contains_rotated(box, p) 
+  local angle = 2 * math.pi * box.orientation
+  local cos = math.cos(angle)
+  local sin = math.sin(angle)
+
+  local x, y = pos.unpack(p)
+
+  -- Before rotation
+  local bx1, by1, bx2, by2 = unpack(box)
+  
+  -- Center of the box
+  local cx, cy = (bx1 + bx2) / 2, (by1 + by2) / 2
+
+  -- Vector from the center of the box to the point
+  local vx, vy = x - cx, y - cy
+
+  -- Rotate the point into the box coordinates
+  local rx, ry = cx + cos * vx - sin * vy, cy + sin * vx + cos * vy
+
+  return bx1 <= rx and rx <= bx2 and by1 <= ry and ry <= by2
+end
+
 -- Checks whether a point falls within bounding box
 local function contains(box, p)
+  if box.orientation ~= nil and box.orientation ~= 0 then
+    return contains_rotated(box, p)
+  end
   local x1, y1, x2, y2 = unpack(box)
   local px, py = pos.unpack(p)
 
@@ -215,6 +240,25 @@ tests.register_test("box.test_overlap_rotated", function()
   assert(not overlap_rotated(box1, box3))
   box3.orientation = 1/8
   assert(overlap_rotated(box1, box3))
+end)
+
+tests.register_test("box.test_contains_rotated", function()
+  local box = {left_top = {-1, -1.1}, right_bottom = {5, -0.9}}
+  box.orientation = 0
+
+  assert(contains(box, {4, -1}))
+  assert(not contains(box, {3, -2}))
+  assert(not contains(box, {2, -3}))
+
+  box.orientation = 1/8
+  assert(not contains(box, {4, -1}))
+  assert(contains(box, {3, -2}))
+  assert(not contains(box, {2, -3}))
+
+  box.orientation = 1/4
+  assert(not contains(box, {4, -1}))
+  assert(not contains(box, {3, -2}))
+  assert(contains(box, {2, -3}))
 end)
 
 return {

@@ -48,6 +48,11 @@ function WalkSimulator:walk_no_collisions(player_pos, dir)
     return player_pos + DIR_TO_VELOCITY[dir]
 end
 
+function WalkSimulator:clear()
+    self.predicted_pos = nil
+    self:reset()
+end
+
 function WalkSimulator:reset()
     self.cache_box = nil
     self.walk_calls = 0

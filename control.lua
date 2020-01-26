@@ -5,7 +5,9 @@ local util = require "util"
 local log = util.log
 local pathfinder = require "pathfinder"
 local Pathfinder = require("pathfinder").Pathfinder
+local PointSet = require("pointset").PointSet
 local tests = require "tests"
+local tile_pathfinder = require "tile_pathfinder"
 local walking = require "walking"
 local WalkSimulator = walking.WalkSimulator
 local DIRECTIONS = walking.DIRECTIONS
@@ -167,6 +169,7 @@ end
 
 function Ai:stop()
   self.controller:remove_listener(self.tick_listener)
+  self.walk_simulator:clear()
 end
 
 function Ai:try_to_mine()
@@ -212,6 +215,7 @@ function Ai:update()
   end
 
   local dir = self.pathfinder:next_step()
+  log("step dir", dir)
 
   if dir ~= nil then
     self.controller:walk(dir)
@@ -400,6 +404,65 @@ local function set_log(args)
   end
 end
 
+local function pathfinder_debug()
+  local coal_entities = get_controller():entities_filtered{name = "coal"}
+  log("Found", #coal_entities, "coal entities")
+  local goals = {}
+  for _, e in ipairs(coal_entities) do
+    table.insert(goals, pos.pack(e.position))
+  end
+  local pathfinder = Pathfinder.new(get_controller())
+  pathfinder:debug(goals, 2.8)
+end
+
+local _pathfinder
+
+local function pathfinder_step()
+  if _pathfinder == nil then
+    local coal_entities = get_controller():entities_filtered{name = "coal"}
+    log("Found", #coal_entities, "coal entities")
+    local goals = {}
+    for _, e in ipairs(coal_entities) do
+      table.insert(goals, pos.pack(e.position))
+    end
+    _pathfinder = Pathfinder.new(get_controller())
+    _pathfinder:set_goals(goals, 2.8)
+  end
+  local dir = _pathfinder:next_step()
+
+  log("step dir", dir)
+
+  if dir ~= nil then
+    get_controller():walk(dir)
+  end
+end
+
+local function pathfinder_tiles()
+  local coal_entities = get_controller():entities_filtered{name = "coal"}
+  log("Found", #coal_entities, "coal entities")
+  local goals = {}
+  for _, e in ipairs(coal_entities) do
+    table.insert(goals, pos.pack(e.position))
+  end
+  local goals_pset = PointSet.new(goals)
+  local tp = tile_pathfinder.TilePathfinder.new(get_controller(), goals_pset, 2.8)
+  local center = tile_pathfinder.get_tile_center(get_controller():position())
+  local cx, cy = pos.unpack(center)
+  log("center", pos.norm(center))
+  for dy = -5, 5, 1 do
+    local row = {}
+    for dx = -5, 5, 1 do
+      local dist = tp:min_distance({cx + dx, cy + dy})
+      if dist == nil then
+        table.insert(row, "*")
+      else
+        table.insert(row, string.format("%0.2f", dist))
+      end
+    end
+    log(dy, row)
+  end
+end
+
 commands.add_command("start", "Give AI control over the player", start)
 commands.add_command("stop", "Stops AI and any running actions in Controller", stop)
 commands.add_command("pos", "Show current position", player_pos)
@@ -414,7 +477,6 @@ commands.add_command("test", "Run unit tests", test)
 commands.add_command("random-walk", "Investigate how walking works", random_walk)
 commands.add_command("env", "Show all variable in global environment", env)
 commands.add_command("log", "Enable/disable AI logging. Args: 1/true/on to enable, 0/false/off to disable.", set_log)
-commands.add_command("enable_pointset", "", function()
-  pathfinder.enable_pointset(true)
-  log("pointset enabled")
-end)
+commands.add_command("pathfinder", "", pathfinder_debug)
+commands.add_command("step", "", pathfinder_step)
+commands.add_command("tiles", "", pathfinder_tiles)
