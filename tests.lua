@@ -2,15 +2,13 @@ local log = require("util").log
 
 local tests = {}
 
-local function register_test(name, func)
-    tests[name] = func
-end
+local function register_test(name, func) tests[name] = func end
 
 local function run_tests()
-    for name, func in pairs(tests) do
-        func()
-        log(name, ': ok')
-    end
+  for name, func in pairs(tests) do
+    func()
+    log(name, ": ok")
+  end
 end
 
 return {

@@ -1,9 +1,7 @@
 local box = require "box"
 local pos = require "pos"
-local pqueue = require "pqueue"
 local util = require "util"
 local log = util.log
-local pathfinder = require "pathfinder"
 local Pathfinder = require("pathfinder").Pathfinder
 local PointSet = require("pointset").PointSet
 local tests = require "tests"
@@ -27,14 +25,10 @@ function Controller.new(player)
 end
 
 -- Get current position
-function Controller:position()
-  return self.player.position
-end
+function Controller:position() return self.player.position end
 
 -- Get player character entity
-function Controller:character()
-  return self.player.character
-end
+function Controller:character() return self.player.character end
 
 -- Returns all entities in the box with the side 2*radius.
 function Controller:entities(radius)
@@ -44,9 +38,7 @@ function Controller:entities(radius)
 end
 
 -- Returns a dictionary name -> LuaRecipe of all available recipes.
-function Controller:recipes()
-  return self.player.force.recipes
-end
+function Controller:recipes() return self.player.force.recipes end
 
 function Controller:entities_in_box(bounding_box)
   local bounding_box = box.norm(bounding_box)
@@ -58,9 +50,7 @@ function Controller:entities_filtered(filters)
 end
 
 -- Stop any running action
-function Controller:stop()
-  self:remove_all_listeners()
-end
+function Controller:stop() self:remove_all_listeners() end
 
 -- Mine position
 function Controller:mine()
@@ -69,9 +59,7 @@ function Controller:mine()
   local ore_entity, ore_point
 
   for _, e in ipairs(self.surface.find_entities(player_box)) do
-    if self:is_minable(e) then
-      ore_entity = e
-    end
+    if self:is_minable(e) then ore_entity = e end
   end
 
   if ore_entity == nil then
@@ -84,11 +72,14 @@ function Controller:mine()
 end
 
 function Controller:is_minable(entity)
-  return entity.minable and self.player.can_reach_entity(entity) and entity.name ~= "player"
+  return
+      entity.minable and self.player.can_reach_entity(entity) and entity.name ~=
+          "player"
 end
 
 function Controller:mine_entity(entity)
-  local selection_point = box.selection_diff(entity.selection_box, self.player.character.selection_box)
+  local selection_point = box.selection_diff(entity.selection_box, self.player
+                                                 .character.selection_box)
   self.player.update_selected_entity(selection_point)
   self.player.mining_state = {mining = true, position = selection_point}
 end
@@ -102,12 +93,10 @@ function Controller:get_inventory(type)
 end
 
 function Controller:craft(recipe)
-  self.player.begin_crafting{count=1, recipe=recipe}
+  self.player.begin_crafting {count = 1, recipe = recipe}
 end
 
-function Controller:crafting_queue()
-  return self.player.character.crafting_queue
-end
+function Controller:crafting_queue() return self.player.character.crafting_queue end
 
 -- Walk one step in given direction
 function Controller:walk(dir)
@@ -118,13 +107,9 @@ function Controller:get_tile(position)
   return self.surface.get_tile(pos.unpack(position))
 end
 
-function Controller:add_listener(callback)
-  table.insert(self.listeners, callback)
-end
+function Controller:add_listener(callback) table.insert(self.listeners, callback) end
 
-function Controller:remove_all_listeners()
-  self.listeners = {}
-end
+function Controller:remove_all_listeners() self.listeners = {} end
 
 function Controller:remove_listener(callback)
   for i, e in ipairs(self.listeners) do
@@ -135,14 +120,10 @@ function Controller:remove_listener(callback)
   end
 end
 
-function Controller:tick()
-  return game.tick
-end
+function Controller:tick() return game.tick end
 
 function Controller:on_tick()
-  for _, listener in ipairs(self.listeners) do
-    listener(self)
-  end
+  for _, listener in ipairs(self.listeners) do listener(self) end
 end
 
 -- Ai makes the decisions what to do and controls the character through the controller object.
@@ -161,9 +142,9 @@ function Ai.new(controller)
 end
 
 function Ai:start()
-  log('Ai:start')
+  log("Ai:start")
   self.updates = 0
-  self.tick_listener = util.bind(self, 'update')
+  self.tick_listener = util.bind(self, "update")
   self.controller:add_listener(self.tick_listener)
 end
 
@@ -174,7 +155,10 @@ end
 
 function Ai:try_to_mine()
   local player_box = box.pad(self.controller:position(), 3)
-  local coal_entities = self.controller:entities_filtered{area=player_box, name = "coal"}
+  local coal_entities = self.controller:entities_filtered{
+    area = player_box,
+    name = "coal"
+  }
   local ore_entity = nil
   for _, e in ipairs(coal_entities) do
     if self.controller:is_minable(e) then
@@ -188,7 +172,8 @@ function Ai:try_to_mine()
 
     if self.previous_action ~= "mine" then
       log("Reached ore entity", ore_entity.name, pos.norm(ore_entity.position))
-      log("L2 distance to entity:", pos.dist_l2(self.controller:position(), ore_entity.position))
+      log("L2 distance to entity:",
+          pos.dist_l2(self.controller:position(), ore_entity.position))
       self.previous_action = "mine"
     end
     return true
@@ -235,16 +220,14 @@ local active_ai = nil;
 local function get_controller()
   if active_controller == nil then
     active_controller = Controller.new(game.player)
-    script.on_nth_tick(1, util.bind(active_controller, 'on_tick'))
+    script.on_nth_tick(1, util.bind(active_controller, "on_tick"))
   end
   return active_controller
 end
 
 local function get_ai()
   local controller = get_controller()
-  if active_ai == nil then
-    active_ai = Ai.new(controller)
-  end
+  if active_ai == nil then active_ai = Ai.new(controller) end
   return active_ai
 end
 
@@ -275,7 +258,8 @@ local function entities()
   game.print("Entities in the 10x10 box:")
   for _, e in ipairs(entities) do
     log(e.name, " position: ", e.position, " bounding: ", e.bounding_box,
-        " collision: ", e.prototype.collision_box, " orientation: ", e.orientation)
+        " collision: ", e.prototype.collision_box, " orientation: ",
+        e.orientation)
   end
 end
 
@@ -312,26 +296,23 @@ local function recipe(args)
   local name = args.parameter
   local recipe = get_controller():recipes()[name]
   log("name:", name, "enabled:", recipe.enabled, "category:", recipe.category,
-      "hidden:", recipe.hidden, "energy:", recipe.energy, "order:", recipe.order,
-      "group:", recipe.group.name)
+      "hidden:", recipe.hidden, "energy:", recipe.energy, "order:",
+      recipe.order, "group:", recipe.group.name)
   log("Ingredients:", recipe.ingredients)
   log("Products:", recipe.products)
 end
 
 local function inventory(args)
   local controller = get_controller()
-  local inventory = controller:character().get_inventory(defines.inventory[args.parameter])
-  if inventory == nil then
-    log("Unknown inventory")
-  end
+  local inventory = controller:character().get_inventory(
+                        defines.inventory[args.parameter])
+  if inventory == nil then log("Unknown inventory") end
   log("Inventory type:", type, "slots:", #inventory)
   log("Contents:", inventory.get_contents())
   log("has_items_inside:", controller:character().has_items_inside())
 end
 
-local function mine(args)
-  get_controller():mine()
-end
+local function mine(args) get_controller():mine() end
 
 local function walk(args)
   dir = defines.direction[args.parameter]
@@ -369,15 +350,11 @@ local function random_walk(args)
   controller:add_listener(walk)
 end
 
-local function test()
-  tests.run_tests()
-end
+local function test() tests.run_tests() end
 
 local function env()
   local list = {}
-  for n in pairs(_G) do
-    table.insert(list, n)
-  end
+  for n in pairs(_G) do table.insert(list, n) end
   table.sort(list)
   log(list)
   log(_VERSION)
@@ -398,9 +375,9 @@ local function set_log(args)
   end
   util.set_log(true)
   if enabled then
-    game.print('Logging enabled')
+    game.print("Logging enabled")
   else
-    game.print('Logging disabled')
+    game.print("Logging disabled")
   end
 end
 
@@ -432,9 +409,7 @@ local function pathfinder_step()
 
   log("step dir", dir)
 
-  if dir ~= nil then
-    get_controller():walk(dir)
-  end
+  if dir ~= nil then get_controller():walk(dir) end
 end
 
 local function pathfinder_tiles()
@@ -445,7 +420,8 @@ local function pathfinder_tiles()
     table.insert(goals, pos.pack(e.position))
   end
   local goals_pset = PointSet.new(goals)
-  local tp = tile_pathfinder.TilePathfinder.new(get_controller(), goals_pset, 2.8)
+  local tp = tile_pathfinder.TilePathfinder.new(get_controller(), goals_pset,
+                                                2.8)
   local center = tile_pathfinder.get_tile_center(get_controller():position())
   local cx, cy = pos.unpack(center)
   log("center", pos.norm(center))
@@ -464,11 +440,13 @@ local function pathfinder_tiles()
 end
 
 commands.add_command("start", "Give AI control over the player", start)
-commands.add_command("stop", "Stops AI and any running actions in Controller", stop)
+commands.add_command("stop", "Stops AI and any running actions in Controller",
+                     stop)
 commands.add_command("pos", "Show current position", player_pos)
 commands.add_command("entities", "Show entities around", entities)
 commands.add_command("all_entities", "Show all known entities", all_entities)
-commands.add_command("inventory", "Show the character's inventory of a given type", inventory)
+commands.add_command("inventory",
+                     "Show the character's inventory of a given type", inventory)
 commands.add_command("recipe", "Show details about a recipe", recipe)
 commands.add_command("recipes", "Show all known recipes", recipes)
 commands.add_command("mine", "Mine the nearest minable tile", mine)
@@ -476,7 +454,9 @@ commands.add_command("walk", "Walk in the given direction (n, nw, w, ...)", walk
 commands.add_command("test", "Run unit tests", test)
 commands.add_command("random-walk", "Investigate how walking works", random_walk)
 commands.add_command("env", "Show all variable in global environment", env)
-commands.add_command("log", "Enable/disable AI logging. Args: 1/true/on to enable, 0/false/off to disable.", set_log)
+commands.add_command("log",
+                     "Enable/disable AI logging. Args: 1/true/on to enable, 0/false/off to disable.",
+                     set_log)
 commands.add_command("pathfinder", "", pathfinder_debug)
 commands.add_command("step", "", pathfinder_step)
 commands.add_command("tiles", "", pathfinder_tiles)

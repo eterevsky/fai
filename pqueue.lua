@@ -18,9 +18,7 @@ function PriorityQueue:push(entry)
   self:_sift_down(#self.heap)
 end
 
-function PriorityQueue:empty()
-  return next(self.heap) == nil
-end
+function PriorityQueue:empty() return next(self.heap) == nil end
 
 function PriorityQueue:pop()
   local last = table.remove(self.heap)
@@ -34,9 +32,7 @@ function PriorityQueue:pop()
   end
 end
 
-function PriorityQueue:size()
-  return #self.heap
-end
+function PriorityQueue:size() return #self.heap end
 
 function PriorityQueue:_sift_down(idx)
   while idx > 1 do
@@ -48,7 +44,7 @@ function PriorityQueue:_sift_down(idx)
     self.heap[idx] = self.heap[parent_idx]
     self.heap[parent_idx] = temp
 
-    idx = parent_idx    
+    idx = parent_idx
   end
 end
 
@@ -57,9 +53,7 @@ function PriorityQueue:_sift_up(idx)
     local left = 2 * idx
     local right = left + 1
     if (left > #self.heap or self.heap[idx] < self.heap[left]) and
-       (right > #self.heap or self.heap[idx] < self.heap[right]) then
-      return
-    end
+        (right > #self.heap or self.heap[idx] < self.heap[right]) then return end
     if right <= #self.heap and self.heap[right] < self.heap[left] then
       local temp = self.heap[right]
       self.heap[right] = self.heap[idx]
@@ -141,6 +135,4 @@ tests.register_test("pqueue.test", function()
   log("pqueue.test ok")
 end)
 
-return {
-  PriorityQueue = PriorityQueue,
-}
+return {PriorityQueue = PriorityQueue}
