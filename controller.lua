@@ -1,81 +1,80 @@
 -- Controller contains a useful subset of Factorio API through which the AI
 -- controls the game.
-
 local box = require "box"
 local log = require("util").log
 local pos = require "pos"
 
 local _listeners = {}
 local _player
+local _listening = false
 
-local function start(player) _player = player end
+local controller = {}
+
+function controller.activate()
+  if game.player == nil then
+    game.print(
+        "controller.activate() should only be called from a command handler")
+    return
+  end
+  log("Activating controller for player", game.player.name)
+  _player = game.player
+  if not _listening then
+    log("Controller now listens on every tick")
+    script.on_nth_tick(1, controller.on_tick)
+    _listening = true
+  end
+end
 
 -- Stop any running action
-local function stop() remove_all_listeners() end
+function controller.stop()
+  controller.remove_all_listeners()
+  -- log('Controller stops listening')
+  -- script.on_nth_tick(1, nil)
+  -- _listening = false
+end
 
 -- Get current position
-local function position()
+function controller.position()
   local point = _player.position
   assert(point ~= nil)
   return point
 end
 
 -- Get player character entity
-local function character() return _player.character end
+function controller.character() return _player.character end
 
 -- Returns all entities in the box with the side 2*radius.
-local function entities(radius)
+function controller.entities(radius)
   if radius == nil then radius = 1000 end
-  local bounding_box = box.pad(position(), radius)
+  local bounding_box = box.pad(controller.position(), radius)
   return _player.surface.find_entities(bounding_box)
 end
 
 -- Returns a dictionary name -> LuaRecipe of all available recipes.
-local function recipes() return _player.force.recipes end
+function controller.recipes() return _player.force.recipes end
 
-local function entities_in_box(bounding_box)
-  local bounding_box = box.norm(bounding_box)
-  return _player.surface.find_entities(bounding_box)
+function controller.entities_in_box(bounding_box)
+  local norm_box = box.norm(bounding_box)
+  return _player.surface.find_entities(norm_box)
 end
 
-local function entities_filtered(filters)
+function controller.entities_filtered(filters)
   return _player.surface.find_entities_filtered(filters)
 end
 
-local function is_minable(entity)
-  return entity.minable and
-         _player.can_reach_entity(entity) and
-         entity.name ~= "player"
+function controller.is_minable(entity)
+  return entity.minable and _player.can_reach_entity(entity) and entity.name ~=
+             "player"
 end
 
-local function mine_entity(entity)
-  local selection_point = box.selection_diff(
-      entity.selection_box, _player.character.selection_box)
+function controller.mine_entity(entity)
+  local selection_point = box.selection_diff(entity.selection_box,
+                                             _player.character.selection_box)
   _player.update_selected_entity(selection_point)
   _player.mining_state = {mining = true, position = selection_point}
 end
 
--- Mine nearby entities
--- TODO: Move to AI
-local function mine()
-  local reach_distance = _player.resource_reach_distance + 0.3
-  local player_box = box.padding(position(), reach_distance)
-  local ore_entity, ore_point
-
-  for _, e in ipairs(_player.surface.find_entities(player_box)) do
-    if is_minable(e) then ore_entity = e end
-  end
-
-  if ore_entity == nil then
-    game.print("Didn't find any reachable ore entity")
-    return
-  end
-
-  log("Found ore entity:", ore_entity.name, ore_entity.position)
-  mine_entity(ore_entity)
-end
-
-local function get_inventory(type)
+function controller.get_inventory(type)
   if type == nil then
     return _player.character.get_main_inventory()
   else
@@ -83,27 +82,26 @@ local function get_inventory(type)
   end
 end
 
-local function craft(recipe)
+function controller.craft(recipe)
   _player.begin_crafting {count = 1, recipe = recipe}
 end
 
--- TODO: Hide?
-local function crafting_queue() return _player.character.crafting_queue end
-
 -- Walk one step in given direction
-local function walk(dir)
+function controller.walk(dir)
   _player.walking_state = {walking = true, direction = dir}
 end
 
-local function get_tile(point)
+function controller.get_tile(point)
   return _player.surface.get_tile(pos.unpack(point))
 end
 
-local function add_listener(callback) table.insert(_listeners, callback) end
+function controller.add_listener(callback)
+  table.insert(_listeners, callback)
+end
 
-local function remove_all_listeners() _listeners = {} end
+function controller.remove_all_listeners() _listeners = {} end
 
-local function remove_listener(callback)
+function controller.remove_listener(callback)
   for i, e in ipairs(_listeners) do
     if e == callback then
       table.remove(_listeners, i)
@@ -112,32 +110,10 @@ local function remove_listener(callback)
   end
 end
 
-local function tick() return game.tick end
+function controller.tick() return game.tick end
 
-local function on_tick()
+function controller.on_tick()
   for _, listener in ipairs(_listeners) do listener() end
 end
 
-return {
-  position = position,
-  character = character,
-  entities = entities,
-  recipes = recipes,
-  entities_in_box = entities_in_box,
-  entities_filtered = entities_filtered,
-  start = start,
-  stop = stop,
-  is_minable = is_minable,
-  mine_entity = mine_entity,
-  mine = mine,
-  get_inventory = get_inventory,
-  craft = craft,
-  crafting_queue = crafting_queue,
-  walk = walk,
-  get_tile = get_tile,
-  add_listener = add_listener,
-  remove_all_listeners = remove_all_listeners,
-  remove_listener = remove_listener,
-  tick = tick,
-  on_tick = on_tick,
-}
+return controller
