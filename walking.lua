@@ -31,7 +31,7 @@ function WalkSimulator.new(controller)
   local self = {}
   setmetatable(self, WalkSimulator)
   self.controller = controller
-  self.char_collision_box = self.controller:character().prototype.collision_box
+  self.char_collision_box = self.controller.character().prototype.collision_box
   self.entity_cache = {}
   self.cache_box = nil
   self.walk_calls = 0
@@ -85,7 +85,7 @@ function WalkSimulator:_update_cache(player_box)
   self.cache_box = new_box
   self.entity_cache = {}
 
-  for _, entity in ipairs(self.controller:entities_in_box(new_box)) do
+  for _, entity in ipairs(self.controller.entities_in_box(new_box)) do
     -- local entity_box = collision_box(entity)
     -- local entity_box = box.move(entity.prototype.collision_box, entity.position)
     local entity_box = entity.bounding_box
@@ -105,7 +105,7 @@ function WalkSimulator:walk(from, dir)
   self.walk_calls = self.walk_calls + 1
   local new_pos = self:walk_no_collisions(from, dir)
   -- log("no collisions new_pos = ", pos.norm(new_pos))
-  local new_tile = self.controller:get_tile(new_pos)
+  local new_tile = self.controller.get_tile(new_pos)
   if new_tile.collides_with("player-layer") then
     -- log("new_tile collide ", new_tile)
     return from
@@ -123,12 +123,12 @@ function WalkSimulator:walk(from, dir)
 end
 
 function WalkSimulator:register_prediction(dir)
-  local player_pos = pos.pack(self.controller:position())
+  local player_pos = pos.pack(self.controller.position())
   self.old_pos = player_pos
   self.prediction_dir = dir
   self.predicted_pos = self:walk(player_pos, dir)
   self.predicted_no_collision = self:walk_no_collisions(player_pos, dir)
-  self.previous_tick = self.controller:tick()
+  self.previous_tick = self.controller.tick()
 end
 
 -- Checks the previously registered prediction of player position. Returns true
@@ -139,10 +139,10 @@ end
 function WalkSimulator:check_prediction()
   self:reset()
   if self.predicted_pos == nil then return true end
-  local player_pos = pos.pack(self.controller:position())
-  if self.controller:tick() ~= self.previous_tick + 1 then
+  local player_pos = pos.pack(self.controller.position())
+  if self.controller.tick() ~= self.previous_tick + 1 then
     log("Can't check prediction not from the previous step. previous_tick = ",
-        self.previous_tick, " current tick = ", self.controller:tick())
+        self.previous_tick, " current tick = ", self.controller.tick())
     return false
   end
   if player_pos ~= self.predicted_pos then
@@ -154,7 +154,7 @@ function WalkSimulator:check_prediction()
       log("Expected delta:", pos.delta(self.old_pos, self.predicted_pos))
       log("Actual delta:", pos.delta(self.old_pos, player_pos))
       local player_box = box.pad(player_pos, 1.0)
-      for _, entity in ipairs(self.controller:entities_in_box(player_box)) do
+      for _, entity in ipairs(self.controller.entities_in_box(player_box)) do
         local entity_box = box.move(entity.prototype.collision_box,
                                     entity.position)
         log(entity.name, box.norm(entity_box), entity.prototype.collision_box)

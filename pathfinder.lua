@@ -198,7 +198,7 @@ function Pathfinder:next_step()
   self.cache_hits = 0
   self.cache_misses = 0
 
-  local start_pos = pos.pack(self.controller:position())
+  local start_pos = pos.pack(self.controller.position())
   local min_rem_steps = self:_estimate_steps(start_pos)
   self:_init_queue(start_pos)
   -- log("Distance from the current tile:",
@@ -262,7 +262,7 @@ end
 
 function Pathfinder:debug(goals, goal_radius)
   self:set_goals(goals, goal_radius)
-  local start = pos.pack(self.controller:position())
+  local start = pos.pack(self.controller.position())
   log("Current pos:", pos.norm(start))
   log("Distance from the current tile:",
       self.tile_pathfinder:min_distance(start))

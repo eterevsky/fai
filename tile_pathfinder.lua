@@ -92,10 +92,11 @@ function TilePathfinder:_reconstruct_path(to)
 end
 
 function TilePathfinder:_tile_passable(point)
-  local tile = self.controller:get_tile(point)
+  assert(point ~= nil)
+  local tile = self.controller.get_tile(point)
   if tile.collides_with("player-layer") then return false end
   local x, y = pos.unpack(point)
-  local entities = self.controller:entities_filtered{
+  local entities = self.controller.entities_filtered{
     area = {{x - 0.1, y - 0.1}, {x + 0.1, y + 0.1}},
     collision_mask = "player-layer"
   }
