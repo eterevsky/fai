@@ -87,7 +87,7 @@ tests.register_test("pqueue.test", function()
   local pq = PriorityQueue.new()
   assert(pq:empty())
 
-  for _i = 1, 100 do
+  for _ = 1, 100 do
     local x = math.random()
     table.insert(elements, x)
     pq:push(x)
@@ -100,10 +100,10 @@ tests.register_test("pqueue.test", function()
 
       local lo_i = 1
       local lo_x = elements[1]
-      for i, x in ipairs(elements) do
-        if x < lo_x then
+      for i, y in ipairs(elements) do
+        if y < lo_x then
           lo_i = i
-          lo_x = x
+          lo_x = y
         end
       end
 

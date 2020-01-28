@@ -7,7 +7,6 @@ local PointSet = require("pointset").PointSet
 local tile_pathfinder = require "tile_pathfinder"
 local walking = require "walking"
 
-local DIAG_SPEED = walking.DIAG_SPEED
 local DIRECTIONS = walking.DIRECTIONS
 local SPEED = walking.SPEED
 local WalkSimulator = walking.WalkSimulator
@@ -50,8 +49,8 @@ function Pathfinder.new(controller)
   self.goals = {}
   self.goals_pset = nil
 
-  -- Every next step should lead to the closest node that is no further from the goals than on the
-  -- previous step
+  -- Every next step should lead to the closest node that is no further from
+  -- the goals than on the previous step
   self.closest_node_distance = nil
 
   -- Encoded position -> distance to goals
@@ -72,7 +71,7 @@ function Pathfinder:_estimate_by_tiles(from)
   local cx, cy = pos.unpack(center)
 --   local best_dir = nil
 --   local best_local_distance = nil
-  for dir, delta in pairs(tile_pathfinder.DIRECTIONS) do
+  for _, delta in pairs(tile_pathfinder.deltas) do
     local neighbor_center = center + delta
     local nx, ny = pos.unpack(neighbor_center)
 
@@ -94,8 +93,8 @@ function Pathfinder:_estimate_by_tiles(from)
 
     if distance < min_distance then
       min_distance = distance
-      best_dir = dir
-      best_local_distance = local_distance
+      -- best_dir = dir
+      -- best_local_distance = local_distance
     end
     ::continue::
   end
@@ -111,7 +110,7 @@ end
 -- Low estimate for the number of ticks to reach a point within the given
 -- distance from any of the goals.
 function Pathfinder:_estimate_steps(from)
-  local from = pos.pack(from)
+  from = pos.pack(from)
   local cached_steps = self.steps_cache[from]
   if cached_steps ~= nil then
     self.cache_hits = self.cache_hits + 1

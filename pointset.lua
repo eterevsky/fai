@@ -114,14 +114,14 @@ end
 
 tests.register_test("pointset.test", function()
   local points = {}
-  for _i = 1, 100 do
+  for _ = 1, 100 do
     local point = pos.pack(math.random(), math.random())
     table.insert(points, point)
   end
 
   local pointset = PointSet.new(points)
 
-  for _i = 1, 100 do
+  for _ = 1, 100 do
     local from = pos.pack(math.random(), math.random())
     local pointset_dist = pointset:min_l2_dist(from)
     assert(pointset_dist ~= nil)
