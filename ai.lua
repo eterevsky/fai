@@ -14,7 +14,6 @@ local ai = {}
 function ai.start(controller)
   log("Starting AI")
   _controller = controller
-  _pathfinder = Pathfinder.new(controller)
   _controller.add_listener(ai.update)
 end
 
@@ -56,14 +55,14 @@ end
 function ai.update()
   if _try_to_mine() then return end
 
-  if not _pathfinder:has_goals() then
+  if _pathfinder == nil then
     local coal_entities = _controller.entities_filtered{name = "coal"}
     log("Found", #coal_entities, "coal entities")
     local goals = {}
     for _, e in ipairs(coal_entities) do
       table.insert(goals, pos.pack(e.position))
     end
-    _pathfinder:set_goals(goals, 2.8)
+    _pathfinder = Pathfinder.new(_controller, goals, 2.8)
   end
 
   local dir = _pathfinder:next_step()

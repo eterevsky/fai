@@ -170,8 +170,8 @@ function()
   for _, e in ipairs(coal_entities) do
     table.insert(goals, pos.pack(e.position))
   end
-  local pathfinder = Pathfinder.new(controller)
-  pathfinder:debug(goals, 2.8)
+  local pathfinder = Pathfinder.new(controller, goals, 2.8)
+  pathfinder:debug()
 end)
 
 local _pathfinder
@@ -186,8 +186,7 @@ function()
     for _, e in ipairs(coal_entities) do
       table.insert(goals, pos.pack(e.position))
     end
-    _pathfinder = Pathfinder.new(controller)
-    _pathfinder:set_goals(goals, 2.8)
+    _pathfinder = Pathfinder.new(controller, goals, 2.8)
   end
   local dir = _pathfinder:next_step()
 

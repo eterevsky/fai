@@ -41,13 +41,15 @@ PathNode.__le = function(a, b) return a.cost <= b.cost end
 local Pathfinder = {}
 Pathfinder.__index = Pathfinder
 
-function Pathfinder.new(controller)
+function Pathfinder.new(controller, goals, goal_radius)
   local self = {}
   setmetatable(self, Pathfinder)
   self.controller = controller
-  -- self.coarse = CoarsePathfinder.new(controller)
-  self.goals = {}
-  self.goals_pset = nil
+  self.goals_pset = PointSet.new(goals)
+  self.goal_radius = goal_radius
+  self.tile_pathfinder = tile_pathfinder.TilePathfinder.new(self.controller,
+                                                            self.goals_pset,
+                                                            self.goal_radius)
 
   -- Every next step should lead to the closest node that is no further from
   -- the goals than on the previous step
@@ -69,8 +71,6 @@ function Pathfinder:_estimate_by_tiles(from)
   local min_distance = math.huge
   local center = tile_pathfinder.get_tile_center(from)
   local cx, cy = pos.unpack(center)
---   local best_dir = nil
---   local best_local_distance = nil
   for _, delta in pairs(tile_pathfinder.deltas) do
     local neighbor_center = center + delta
     local nx, ny = pos.unpack(neighbor_center)
@@ -87,24 +87,14 @@ function Pathfinder:_estimate_by_tiles(from)
     if tile_distance == nil then goto continue end
     local distance = tile_distance + local_distance
 
-    -- if dir == 1 or dir == 2 or dir == 6 then
-    --     log("  dir", dir, "neighbor", pos.norm(neighbor_center), "tile_distance", tile_distance, "local_distance", local_distance, "distance", distance)
-    -- end
-
     if distance < min_distance then
       min_distance = distance
-      -- best_dir = dir
-      -- best_local_distance = local_distance
     end
+
     ::continue::
   end
 
-  local min_steps = math.ceil(min_distance / SPEED)
---   local neighbor_center = center + tile_pathfinder.DIRECTIONS[best_dir]
---   log("from", pos.norm(from), "neighbor_center", pos.norm(neighbor_center), "min_distance", min_distance, "best_dir",
---           best_dir, "min_steps", math.ceil(min_steps), "best_local_distance", best_local_distance)
-
-  return min_steps
+  return math.ceil(min_distance / SPEED)
 end
 
 -- Low estimate for the number of ticks to reach a point within the given
@@ -132,31 +122,6 @@ function Pathfinder:_estimate_steps(from)
 
   return min_steps
 end
-
-function Pathfinder:set_goals(goals, goal_radius)
-  self.goals = goals
-  self.goals_pset = PointSet.new(goals)
-  self.goal_radius = goal_radius
-  self.goal_radius_steps = math.floor(goal_radius / SPEED)
-
-  self.steps_cache = {}
-  self.cache_hits = 0
-  self.cache_misses = 0
-  self.tile_pathfinder = tile_pathfinder.TilePathfinder.new(self.controller,
-                                                            self.goals_pset,
-                                                            self.goal_radius)
-end
-
-function Pathfinder:clear_goals()
-  self.goals = {}
-  self.goals_pset = nil
-  self.steps_cache = {}
-  self.cache_hits = 0
-  self.cache_missed = 0
-  self.tile_pathfinder = nil
-end
-
-function Pathfinder:has_goals() return #self.goals > 0 end
 
 -- Initialize the queue and visited table, or use them from the previous iteration. If the char
 -- has moved, the queue is invalidated.
@@ -259,8 +224,7 @@ function Pathfinder:next_step()
   return table.remove(self.reversed_path)
 end
 
-function Pathfinder:debug(goals, goal_radius)
-  self:set_goals(goals, goal_radius)
+function Pathfinder:debug()
   local start = pos.pack(self.controller.position())
   log("Current pos:", pos.norm(start))
   log("Distance from the current tile:",
