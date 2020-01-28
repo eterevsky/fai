@@ -1,4 +1,4 @@
-local pos = require("pos")
+local pos = require "pos"
 local tests = require "tests"
 
 local function unpack(box)

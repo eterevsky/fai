@@ -5,9 +5,8 @@ local box = require "box"
 local log = require("util").log
 local Pathfinder = require("pathfinder").Pathfinder
 local pos = require "pos"
-local walking = require "walking"
 
-local _controller, _pathfinder, _walk_simulator
+local _controller, _pathfinder
 local _previous_action
 
 local ai = {}
@@ -16,13 +15,13 @@ function ai.start(controller)
   log("Starting AI")
   _controller = controller
   _pathfinder = Pathfinder.new(controller)
-  _walk_simulator = walking.WalkSimulator.new(controller)
   _controller.add_listener(ai.update)
 end
 
 function ai.stop()
-  _controller.remove_listener(ai.update)
-  _walk_simulator:clear()
+  if _controller ~= nil then
+    _controller.remove_listener(ai.update)
+  end
 end
 
 local function _try_to_mine()
@@ -55,10 +54,6 @@ local function _try_to_mine()
 end
 
 function ai.update()
-  if _previous_action == "walk" then
-    if not _walk_simulator:check_prediction() then return ai.stop() end
-  end
-
   if _try_to_mine() then return end
 
   if not _pathfinder:has_goals() then
@@ -76,7 +71,6 @@ function ai.update()
 
   if dir ~= nil then
     _controller.walk(dir)
-    _walk_simulator:register_prediction(dir)
     _previous_action = "walk"
     return
   end

@@ -3,12 +3,21 @@
 local box = require "box"
 local log = require("util").log
 local pos = require "pos"
+local walking = require "walking"
 
 local _listeners = {}
 local _player
 local _listening = false
+local _walk_simulator
 
 local controller = {}
+
+controller.directions_by_name = defines.direction
+controller.directions = {}
+
+for _, dir in pairs(defines.direction) do
+  table.insert(controller.directions, dir)
+end
 
 function controller.activate()
   if game.player == nil then
@@ -22,6 +31,9 @@ function controller.activate()
     log("Controller now listens on every tick")
     script.on_nth_tick(1, controller.on_tick)
     _listening = true
+  end
+  if _walk_simulator == nil then
+    _walk_simulator = walking.WalkSimulator.new(controller)
   end
 end
 
@@ -89,6 +101,7 @@ end
 -- Walk one step in given direction
 function controller.walk(dir)
   _player.walking_state = {walking = true, direction = dir}
+  _walk_simulator:register_prediction(dir)
 end
 
 function controller.get_tile(point)
@@ -113,6 +126,9 @@ end
 function controller.tick() return game.tick end
 
 function controller.on_tick()
+  if not _walk_simulator:check_prediction() then
+    return controller.stop()
+  end
   for _, listener in ipairs(_listeners) do listener() end
 end
 

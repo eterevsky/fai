@@ -140,4 +140,3 @@ tests.register_test("pointset.test", function()
 end)
 
 return {PointSet = PointSet}
-

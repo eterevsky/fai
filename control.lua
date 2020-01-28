@@ -10,9 +10,6 @@ local Pathfinder = require("pathfinder").Pathfinder
 local PointSet = require("pointset").PointSet
 local tests = require "tests"
 local tile_pathfinder = require "tile_pathfinder"
-local walking = require "walking"
-local WalkSimulator = walking.WalkSimulator
-local DIRECTIONS = walking.DIRECTIONS
 
 -- Commands
 
@@ -109,18 +106,11 @@ end)
 commands.add_command("walk", "Walk in the given direction (north, northwest, ...)",
 function(args)
   controller.activate()
-  local dir = defines.direction[args.parameter]
+  local dir = controller.directions_by_name[args.parameter]
   log("Walking in direction:", dir)
 
-  local simulator = WalkSimulator.new(controller)
-
-  local function walk(controller)
-    if not simulator:check_prediction() then
-      controller.remove_all_listeners()
-    end
-
+  local function walk()
     controller.walk(dir)
-    simulator:register_prediction(dir)
   end
 
   controller.add_listener(walk)
@@ -129,16 +119,10 @@ end)
 commands.add_command("random-walk", "Walk in a random direction on each tick",
 function(args)
   controller.activate()
-  local simulator = WalkSimulator.new(controller)
-
+ 
   local function walk()
-    if not simulator:check_prediction() then
-      controller.remove_all_listeners()
-    end
-
-    local dir = DIRECTIONS[math.random(#DIRECTIONS)]
+    local dir = controller.directions[math.random(#controller.directions)]
     controller.walk(dir)
-    simulator:register_prediction(dir)
   end
 
   controller.add_listener(walk)
@@ -155,8 +139,8 @@ function()
   log(list)
 end)
 
-commands.add_command("log",
-                     "Enable/disable AI logging. `/log on` to enable, `/log off` to disable.",
+commands.add_command(
+    "log", "Enable/disable logging. `/log on` to enable, `/log off` to disable.",
 function(args)
   local enabled = true
   if args.parameter ~= nil then
