@@ -56,7 +56,7 @@ end
 
 function ai.update()
   if _previous_action == "walk" then
-    if not _walk_simulator:check_prediction() then return stop() end
+    if not _walk_simulator:check_prediction() then return ai.stop() end
   end
 
   if _try_to_mine() then return end

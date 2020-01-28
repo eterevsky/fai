@@ -74,12 +74,10 @@ end
 
 -- Checks whether two boxes intersect.
 local function overlap(box1, box2)
-  local box1 = norm(box1)
-  local box2 = norm(box2)
+  local ax1, ay1, ax2, ay2 = unpack(box1)
+  local bx1, by1, bx2, by2 = unpack(box2)
 
-  return box1.left_top.x <= box2.right_bottom.x and box1.right_bottom.x >=
-             box2.left_top.x and box1.left_top.y <= box2.right_bottom.y and
-             box1.right_bottom.y >= box2.left_top.y
+  return ax1 <= bx2 and ax2 >= bx1 and ay1 <= by2 and ay2 >= by1
 end
 
 local function overlap_rotated(box1, box2_rotated)
@@ -174,30 +172,31 @@ local function pad(center, padding)
   }
 end
 
--- Find a point, that is inside bounding box 1, but not inside bounding box 2.
+-- Find a point, that is inside box 1, but not inside box 2. Returns nil, if
+-- there is no such point.
 local function selection_diff(box1, box2)
-  local box1 = norm(box1)
-  local box2 = norm(box2)
+  local ax1, ay1, ax2, ay2 = unpack(box1)
+  local bx1, by1, bx2, by2 = unpack(box2)
 
-  local x = (box1.right_bottom.x + box1.left_top.x) / 2
-  if box1.left_top.x < box2.left_top.x then
-    x = (box1.left_top.x + math.min(box1.right_bottom.x, box2.left_top.x)) / 2
-  elseif box1.right_bottom.x > box2.right_bottom.x then
-    x = (box1.right_bottom.x + math.max(box1.left_top.x, box2.right_bottom.x)) /
-            2
+  local x = (ax2 + ax1) / 2
+  if ax1 < bx1 then
+    x = (ax1 + math.min(ax2, bx1)) / 2
+  elseif ax2 > bx2 then
+    x = (ax2 + math.max(ax1, bx2)) / 2
   end
 
-  local y = (box1.right_bottom.y + box1.left_top.y) / 2
-  if box1.left_top.y < box2.left_top.y then
-    y = (box1.left_top.y + math.min(box1.right_bottom.y, box2.left_top.y)) / 2
-  elseif box1.right_bottom.y > box2.right_bottom.y then
-    y = (box1.right_bottom.y + math.max(box1.left_top.y, box2.right_bottom.y)) /
-            2
+  local y = (ay2 + ay1) / 2
+  if ay1 < by1 then
+    y = (ay1 + math.min(ay2, by1)) / 2
+  elseif ay2 > by2 then
+    y = (ay2 + math.max(ay1, by2)) / 2
   end
 
-  if contains(box2, {x, y}) then return nil end
+  local point = pos.norm(x, y)
 
-  return {x = x, y = y}
+  if contains(box2, point) then return nil end
+
+  return point
 end
 
 tests.register_test("box.test_selection_diff", function()

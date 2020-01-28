@@ -36,8 +36,8 @@ end
 local function norm(pos_or_x, y)
   if y ~= nil then return {x = pos_or_x, y = y} end
   if type(pos_or_x) == "table" and pos_or_x.x ~= nil then return pos_or_x end
-  local x, y = unpack(pos_or_x)
-  return {x = x, y = y}
+  local ux, uy = unpack(pos_or_x)
+  return {x = ux, y = uy}
 end
 
 local function delta(p1, p2)
@@ -72,8 +72,8 @@ local function pack_delta(dx, dy)
   return p - p0
 end
 
-local function delta_len(delta)
-  local x, y = unpack(delta + pack(0, 0))
+local function delta_len(d)
+  local x, y = unpack(d + pack(0, 0))
   return math.sqrt(x * x + y * y)
 end
 
@@ -88,7 +88,7 @@ local function test()
       local upos = pack(pos)
       assert(upos == pos)
 
-      local upos = pack({x, y})
+      upos = pack({x, y})
       assert(upos == pos)
     end
   end
@@ -97,7 +97,7 @@ local function test()
   assert(ux == 0)
   assert(uy == 0)
 
-  local ux, uy = unpack({12, 34})
+  ux, uy = unpack({12, 34})
   assert(ux == 12)
   assert(uy == 34)
 
@@ -109,7 +109,7 @@ end
 tests.register_test("pos.test", test)
 
 local function test_pack_delta()
-  for _i = 1, 10 do
+  for _ = 1, 10 do
     local dx = math.random(-10000, 10000) / 256
     local dy = math.random(-10000, 10000) / 256
     local x = math.random(-10000, 10000) / 256
