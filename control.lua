@@ -91,12 +91,11 @@ function(args)
   log("Products:", recipe.products)
 end)
 
-commands.add_command("inventory",
-                     "Show the character's inventory of a given type",
-function(args)
+commands.add_command("inventory", "Show the character's inventory",
+function()
   controller.activate()
   local inventory = controller.character().get_inventory(
-                        defines.inventory[args.parameter])
+                        defines.inventory.character_main)
   if inventory == nil then log("Unknown inventory") end
   log("Inventory type:", type, "slots:", #inventory)
   log("Contents:", inventory.get_contents())
