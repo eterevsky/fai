@@ -1,4 +1,3 @@
-local log = require("util").log
 local tests = require "tests"
 
 -- Binary heap-based priority queue. Returns elements lower-first.
