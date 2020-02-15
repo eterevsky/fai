@@ -131,8 +131,6 @@ tests.register_test("pqueue.test", function()
   end
 
   assert(pq:empty())
-
-  log("pqueue.test ok")
 end)
 
 return {PriorityQueue = PriorityQueue}

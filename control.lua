@@ -8,6 +8,7 @@ local util = require "util"
 local log = util.log
 local Pathfinder = require("pathfinder").Pathfinder
 local PointSet = require("pointset").PointSet
+require "polygon"
 local tests = require "tests"
 local tile_pathfinder = require "tile_pathfinder"
 
