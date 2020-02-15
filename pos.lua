@@ -13,8 +13,8 @@ function pos.unpack(p)
     local y_scaled = math.floor(p / RADIX)
     return (x_scaled - HALF_RADIX) / 256, (y_scaled - HALF_RADIX) / 256
   else
-    local x = p.x or pos[1]
-    local y = p.y or pos[2]
+    local x = p.x or p[1]
+    local y = p.y or p[2]
     return x, y
   end
 end
@@ -29,13 +29,13 @@ function pos.pack(pos_or_x, y)
     x = pos_or_x
   end
 
-  assert(-2048 < x and x < 2048)
-  assert(-2048 < y and y < 2048)
+  local x_scaled = x * 256 + HALF_RADIX
+  local y_scaled = y * 256 + HALF_RADIX
 
-  local x_scaled = math.floor(x * 256 + 0.5) + HALF_RADIX
-  local y_scaled = math.floor(y * 256 + 0.5) + HALF_RADIX
-
-  assert(x_scaled > 0 and x_scaled < RADIX and y_scaled > 0 and y_scaled < RADIX)
+  assert(x_scaled == math.floor(x_scaled))
+  assert(y_scaled == math.floor(y_scaled))
+  assert(x_scaled >= 0 and x_scaled < RADIX)
+  assert(y_scaled >= 0 and y_scaled < RADIX)
 
   return x_scaled + RADIX * y_scaled
 end
@@ -57,23 +57,23 @@ function pos.dist_l2(p1, p2)
   return math.sqrt(dx * dx + dy * dy)
 end
 
+local PACKED0 = pos.pack(0, 0)
+
 -- Returns a single value that can be added to a packed position so that (x, y)
 -- is transformed to (x + dx, y + dy)
 function pos.pack_delta(dx, dy)
-  local p = pos.pack(dx, dy)
-  local p0 = pos.pack(0, 0)
-  return p - p0
+  return pos.pack(dx, dy) - PACKED0
 end
 
 -- Length of packed delta.
 function pos.delta_len(d)
-  local x, y = pos.unpack(d + pos.pack(0, 0))
+  local x, y = pos.unpack(d + PACKED0)
   return math.sqrt(x * x + y * y)
 end
 
-tests.register_test("pos.test", function()
+tests.register_test("pos.pack", function()
   for x = -10, 10, 239 / 256 do
-    for y = -10, 10, 239 / 256 do
+    for y = -10, 10, 241 / 256 do
       local p = pos.pack(x, y)
       local ux, uy = pos.unpack(p)
       assert(x == ux)
@@ -84,6 +84,27 @@ tests.register_test("pos.test", function()
 
       upos = pos.pack({x, y})
       assert(upos == p)
+
+      upos = pos.pack({x = x, y = y})
+      assert(upos == p)
+    end
+  end
+
+  for x = -2000 - 11/256, -2000 + 11/256, 1/256 do
+    for y = 2000 - 11/256, 2000 + 11/256, 1/256 do
+      local p = pos.pack(x, y)
+      local ux, uy = pos.unpack(p)
+      assert(x == ux)
+      assert(y == uy)
+    end
+  end
+
+  for x = 2000 - 11/256, 2000 + 11/256, 1/256 do
+    for y = -2000 - 11/256, -2000 + 11/256, 1/256 do
+      local p = pos.pack(x, y)
+      local ux, uy = pos.unpack(p)
+      assert(x == ux)
+      assert(y == uy)
     end
   end
 
@@ -94,14 +115,30 @@ tests.register_test("pos.test", function()
   ux, uy = pos.unpack({12, 34})
   assert(ux == 12)
   assert(uy == 34)
+end)
 
+tests.register_test("pos.norm", function()
   local p = pos.norm({12, 34})
   assert(p.x == 12)
   assert(p.y == 34)
+  assert(p[1] == nil)
+  assert(p[2] == nil)
+
+  local q = pos.norm(p)
+  assert(p == q)
+
+  local r = pos.norm(pos.pack(p))
+  assert(r.x == 12)
+  assert(r.y == 34)
+end)
+
+tests.register_test("pos.dist_l2", function()
+  local d = pos.dist_l2({1, 2}, {4, 6})
+  assert(d == 5)
 end)
 
 tests.register_test("pos.test_pack_delta", function()
-  for _ = 1, 10 do
+  for _ = 1, 100 do
     local dx = math.random(-10000, 10000) / 256
     local dy = math.random(-10000, 10000) / 256
     local x = math.random(-10000, 10000) / 256
