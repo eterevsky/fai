@@ -1,8 +1,10 @@
 -- Polygon is represented by a list of (usually packed) positions representing
 -- vertices in counter-clockwise direction.
 
+local box = require "box"
 local pos = require "pos"
 local tests = require "tests"
+local log = require("util").log
 
 local polygon = {}
 local Polygon = {}
@@ -20,6 +22,49 @@ function Polygon.new(vertices)
   end
 
   return self
+end
+
+function Polygon.from_box(b)
+  local angle = 2 * math.pi * b.orientation
+  local cos = math.cos(angle)
+  local sin = math.sin(angle)
+
+  -- Before rotation
+  local bx1, by1, bx2, by2 = box.unpack(b)
+
+  -- Center of the box
+  local cx, cy = (bx1 + bx2) / 2, (by1 + by2) / 2
+
+  local rotate = function(x, y)
+    -- Vector from the center of the box to the point
+    local vx, vy = x - cx, y - cy
+
+    -- Rotate the point into the box coordinates
+    local rx, ry = cos * vx - sin * vy, sin * vx + cos * vy
+    if rx > 0 then
+      rx = math.ceil(256 * rx) / 256
+    else
+      rx = math.floor(256 * rx) / 256
+    end
+
+    if ry > 0 then
+      ry = math.ceil(256 * ry) / 256
+    else
+      ry = math.floor(256 * ry) / 256
+    end
+
+    return pos.pack(cx + rx, cy + ry)
+  end
+
+  local box_poly = Polygon.new()
+
+  box_poly:add_vertice(rotate(bx1, by1))
+  box_poly:add_vertice(rotate(bx2, by1))
+  box_poly:add_vertice(rotate(bx2, by2))
+  box_poly:add_vertice(rotate(bx1, by2))
+
+  assert(box_poly:is_convex())
+  return box_poly
 end
 
 function Polygon:add_vertice(v)
@@ -185,6 +230,24 @@ tests.register_test("polygon.intersects", function()
   assert(not poly:intersects({5, 0}, {5, 4}))
   assert(not poly:intersects({-1, 1}, {1, -1}))
   assert(not poly:intersects({1, -1}, {-1, 1}))
+end)
+
+tests.register_test("polygon.from_box", function()
+  local b = {{1, 1}, {4, 3}}
+  b.orientation = 0
+
+  local rotated0 = Polygon.from_box(b)
+  assert(rotated0[1] == pos.pack(1, 1))
+  assert(rotated0[2] == pos.pack(4, 1))
+  assert(rotated0[3] == pos.pack(4, 3))
+  assert(rotated0[4] == pos.pack(1, 3))
+
+  b.orientation = 0.25
+  local rotated1 = Polygon.from_box(b)
+  assert(rotated1[1] == pos.pack(3.5, 0.5))
+  assert(rotated1[2] == pos.pack(3.5, 3.5))
+  assert(rotated1[3] == pos.pack(1.5, 3.5))
+  assert(rotated1[4] == pos.pack(1.5, 0.5))
 end)
 
 return polygon
