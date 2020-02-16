@@ -143,6 +143,43 @@ function Polygon:intersects(p1, p2)
   return contains1
 end
 
+-- Expand the polygon to contain the set of points such that a rectangle with
+-- dimensions b (box) centered in those points will intersect with the original
+-- polygon. In other words it is such that polygon `poly` intersects with
+-- rectangle `b` iff `poly:expand(b)` contains the central point of `b`.
+--
+-- Note: if there are horizontal or vertical edges, it will generate some extra
+-- vertices lying on the edges.
+function Polygon:expand(b)
+  local bx1, by1, bx2, by2 = box.unpack(b)
+  local w = (bx2 - bx1) / 2
+  local h = (by2 - by1) / 2
+
+  local exp_poly = Polygon.new()
+  local prevx, prevy = pos.unpack(self[#self])
+
+  for _, v in ipairs(self) do
+    local x, y = pos.unpack(v)
+
+    local dx, dy
+    if y >= prevy then dx = w else dx = -w end
+    if x >= prevx then dy = -h else dy = h end
+
+    local p1 = pos.pack(prevx + dx, prevy + dy)
+
+    if #exp_poly == 0 or exp_poly[#exp_poly] ~= p1 then
+      exp_poly:add_vertice(p1)
+    end
+
+    local p2 = pos.pack(x + dx, y + dy)
+    exp_poly:add_vertice(p2)
+
+    prevx, prevy = x, y
+  end
+
+  return exp_poly
+end
+
 tests.register_test("polygon.is_convex", function()
   assert(Polygon.new({{0, 0}, {1, 2}, {-5, -1}}):is_convex())
   assert(not Polygon.new({{0, 0}, {-5, -1}, {1, 2}}):is_convex())
@@ -248,6 +285,21 @@ tests.register_test("polygon.from_box", function()
   assert(rotated1[2] == pos.pack(3.5, 3.5))
   assert(rotated1[3] == pos.pack(1.5, 3.5))
   assert(rotated1[4] == pos.pack(1.5, 0.5))
+end)
+
+tests.register_test("polygon.expand", function()
+  local poly = Polygon.new{{2, 1}, {6, 3}, {5, 5}, {1, 3}}
+  local exp = poly:expand({{0, 0}, {2, 4}})
+
+  assert(#exp == 8)
+  assert(exp[3] == pos.pack(3, -1))
+  assert(exp[4] == pos.pack(7, 1))
+  assert(exp[5] == pos.pack(7, 5))
+  assert(exp[6] == pos.pack(6, 7))
+  assert(exp[7] == pos.pack(4, 7))
+  assert(exp[8] == pos.pack(0, 5))
+  assert(exp[1] == pos.pack(0, 1))
+  assert(exp[2] == pos.pack(1, -1))
 end)
 
 return polygon
