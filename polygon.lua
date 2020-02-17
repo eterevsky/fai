@@ -4,7 +4,6 @@
 local box = require "box"
 local pos = require "pos"
 local tests = require "tests"
-local log = require("util").log
 
 local polygon = {}
 local Polygon = {}

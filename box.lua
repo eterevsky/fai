@@ -1,44 +1,84 @@
 local pos = require "pos"
 local tests = require "tests"
+-- local log = require("util").log
 
-local function unpack(box)
-  local left_top = box.left_top or box[1]
-  local right_bottom = box.right_bottom or box[2]
+local box = {}
+local Box = {}
+Box.__index = Box
+box.Box = Box
+
+-- Can be called as Box.new(x1, y1, x2, y2) or Box.new(p1, p2) or Box.new(b),
+-- where p1 = (x1, y1) is the top-left corner, p2 = (x2, y2) is the bottom-right
+-- corner, and b is a box representation as an object.
+function Box.new(x1_or_p1_or_b, y1_or_p2, x2, y2)
+  local self
+
+  if y2 ~= nil then
+    self = {pos.pack(x1_or_p1_or_b, y1_or_p2), pos.pack(x2, y2)}
+  else
+    local p1, p2
+    if y1_or_p2 ~= nil then
+      p1 = x1_or_p1_or_b
+      p2 = y1_or_p2
+    else
+      p1 = box.left_top or x1_or_p1_or_b[1]
+      p2 = box.right_bottom or x1_or_p1_or_b[2]
+    end
+    self = {pos.pack(p1), pos.pack(p2)}
+  end
+
+  setmetatable(self, Box)
+
+  return self
+end
+
+function Box:unpack()
+  local x1, y1 = pos.unpack(self[1])
+  local x2, y2 = pos.unpack(self[2])
+  return x1, y1, x2, y2
+end
+
+function Box:norm()
+  local x1, y1 = pos.unpack(self[1])
+  local x2, y2 = pos.unpack(self[2])
+  return {left_top = pos.norm(x1, y1), right_bottom = pos.norm(x2, y2)}
+end
+
+
+function box.unpack(b)
+  local left_top = b.left_top or b[1]
+  local right_bottom = b.right_bottom or b[2]
   local x1, y1 = pos.unpack(left_top)
   local x2, y2 = pos.unpack(right_bottom)
   return x1, y1, x2, y2
 end
 
-local function norm(box)
-  assert(box ~= nil)
-  local x1, y1, x2, y2 = unpack(box)
+function box.norm(b)
+  assert(b ~= nil)
+  local x1, y1, x2, y2 = box.unpack(b)
   return {left_top = pos.norm(x1, y1), right_bottom = pos.norm(x2, y2)}
 end
 
-local function new_norm(x1, y1, x2, y2)
+function box.new_norm(x1, y1, x2, y2)
   return {left_top = pos.norm(x1, y1), right_bottom = pos.norm(x2, y2)}
-end
-
-local function new_pack(x1, y1, x2, y2)
-  return {pos.pack(x1, y1), pos.pack(x2, y2)}
 end
 
 -- Move a box from (0, 0) to center.
-local function move(box, center)
-  local x1, y1, x2, y2 = unpack(box)
+function box.move(b, center)
+  local x1, y1, x2, y2 = box.unpack(b)
   local x, y = pos.unpack(center)
   return {pos.pack(x + x1, y + y1), pos.pack(x + x2, y + y2)}
 end
 
-local function contains_rotated(box, p)
-  local angle = 2 * math.pi * box.orientation
+function box.contains_rotated(b, p)
+  local angle = 2 * math.pi * b.orientation
   local cos = math.cos(angle)
   local sin = math.sin(angle)
 
   local x, y = pos.unpack(p)
 
   -- Before rotation
-  local bx1, by1, bx2, by2 = unpack(box)
+  local bx1, by1, bx2, by2 = box.unpack(b)
 
   -- Center of the box
   local cx, cy = (bx1 + bx2) / 2, (by1 + by2) / 2
@@ -53,19 +93,19 @@ local function contains_rotated(box, p)
 end
 
 -- Checks whether a point falls within bounding box
-local function contains(box, p)
-  if box.orientation ~= nil and box.orientation ~= 0 then
-    return contains_rotated(box, p)
+function box.contains(b, p)
+  if b.orientation ~= nil and b.orientation ~= 0 then
+    return box.contains_rotated(b, p)
   end
-  local x1, y1, x2, y2 = unpack(box)
+  local x1, y1, x2, y2 = box.unpack(b)
   local px, py = pos.unpack(p)
 
   return x1 <= px and px <= x2 and y1 <= py and py <= y2
 end
 
-local function covers(big_box, small_box)
-  local bx1, by1, bx2, by2 = unpack(big_box)
-  local sx1, sy1, sx2, sy2 = unpack(small_box)
+function box.covers(big_box, small_box)
+  local bx1, by1, bx2, by2 = box.unpack(big_box)
+  local sx1, sy1, sx2, sy2 = box.unpack(small_box)
 
   return
       bx1 <= sx1 and sx1 <= bx2 and by1 <= sy1 and sy1 <= by2 and bx1 <= sx2 and
@@ -73,16 +113,16 @@ local function covers(big_box, small_box)
 end
 
 -- Checks whether two boxes intersect.
-local function overlap(box1, box2)
-  local ax1, ay1, ax2, ay2 = unpack(box1)
-  local bx1, by1, bx2, by2 = unpack(box2)
+function box.overlap(box1, box2)
+  local ax1, ay1, ax2, ay2 = box.unpack(box1)
+  local bx1, by1, bx2, by2 = box.unpack(box2)
 
   return ax1 <= bx2 and ax2 >= bx1 and ay1 <= by2 and ay2 >= by1
 end
 
-local function overlap_rotated(box1, box2_rotated)
+function box.overlap_rotated(box1, box2_rotated)
   if box2_rotated.orientation == nil or box2_rotated.orientation == 0 then
-    return overlap(box1, box2_rotated)
+    return box.overlap(box1, box2_rotated)
   end
 
   local angle = 2 * math.pi * box2_rotated.orientation
@@ -91,14 +131,14 @@ local function overlap_rotated(box1, box2_rotated)
 
   local eps = 1 / 1024
 
-  local ax1, ay1, ax2, ay2 = unpack(box1)
+  local ax1, ay1, ax2, ay2 = box.unpack(box1)
   ax1 = ax1 - eps
   ay1 = ay1 - eps
   ax2 = ax2 + eps
   ay2 = ay2 + eps
 
   -- Before rotation
-  local bx1, by1, bx2, by2 = unpack(box2_rotated)
+  local bx1, by1, bx2, by2 = box.unpack(box2_rotated)
   bx1 = bx1 - eps
   by1 = by1 - eps
   bx2 = bx2 + eps
@@ -164,7 +204,7 @@ local function overlap_rotated(box1, box2_rotated)
   return true
 end
 
-local function pad(center, padding)
+function box.pad(center, padding)
   center = pos.norm(center)
   return {
     {center.x - padding, center.y - padding},
@@ -174,9 +214,9 @@ end
 
 -- Find a point, that is inside box 1, but not inside box 2. Returns nil, if
 -- there is no such point.
-local function selection_diff(box1, box2)
-  local ax1, ay1, ax2, ay2 = unpack(box1)
-  local bx1, by1, bx2, by2 = unpack(box2)
+function box.selection_diff(box1, box2)
+  local ax1, ay1, ax2, ay2 = box.unpack(box1)
+  local bx1, by1, bx2, by2 = box.unpack(box2)
 
   local x = (ax2 + ax1) / 2
   if ax1 < bx1 then
@@ -194,7 +234,7 @@ local function selection_diff(box1, box2)
 
   local point = pos.norm(x, y)
 
-  if contains(box2, point) then return nil end
+  if box.contains(box2, point) then return nil end
 
   return point
 end
@@ -202,26 +242,26 @@ end
 tests.register_test("box.test_selection_diff", function()
   local box1 = {{1, 2}, {2, 3}}
   local box2 = {{0, 1}, {3, 4}}
-  local p = selection_diff(box1, box2)
+  local p = box.selection_diff(box1, box2)
   assert(p == nil)
 
   box2 = {{1.5, 1}, {3, 4}}
-  p = selection_diff(box1, box2)
+  p = box.selection_diff(box1, box2)
   assert(p ~= nil)
-  assert(contains(box1, p))
-  assert(not contains(box2, p))
+  assert(box.contains(box1, p))
+  assert(not box.contains(box2, p))
 
   box2 = {{0, 0}, {3, 2.5}}
-  p = selection_diff(box1, box2)
+  p = box.selection_diff(box1, box2)
   assert(p ~= nil)
-  assert(contains(box1, p))
-  assert(not contains(box2, p))
+  assert(box.contains(box1, p))
+  assert(not box.contains(box2, p))
 
   box2 = {{1.125, 2.125}, {1.875, 2.875}}
-  p = selection_diff(box1, box2)
+  p = box.selection_diff(box1, box2)
   assert(p ~= nil)
-  assert(contains(box1, p))
-  assert(not contains(box2, p))
+  assert(box.contains(box1, p))
+  assert(not box.contains(box2, p))
 end)
 
 tests.register_test("box.test_overlap_rotated", function()
@@ -231,53 +271,41 @@ tests.register_test("box.test_overlap_rotated", function()
     right_bottom = {3.1, 3.1},
     orientation = 0
   }
-  assert(overlap_rotated(box1, box2))
+  assert(box.overlap_rotated(box1, box2))
   box2.orientation = 1 / 8
-  assert(not overlap_rotated(box1, box2))
+  assert(not box.overlap_rotated(box1, box2))
   box2.orientation = 1 / 4
-  assert(overlap_rotated(box1, box2))
+  assert(box.overlap_rotated(box1, box2))
   box2.orientation = 3 / 8
-  assert(not overlap_rotated(box1, box2))
+  assert(not box.overlap_rotated(box1, box2))
 
   local box3 = {
     left_top = {1.1, -1.0},
     right_bottom = {3.1, 1.0},
     orientation = 0
   }
-  assert(not overlap_rotated(box1, box3))
+  assert(not box.overlap_rotated(box1, box3))
   box3.orientation = 1 / 8
-  assert(overlap_rotated(box1, box3))
+  assert(box.overlap_rotated(box1, box3))
 end)
 
 tests.register_test("box.test_contains_rotated", function()
-  local box = {left_top = {-1, -1.1}, right_bottom = {5, -0.9}}
-  box.orientation = 0
+  local b = {left_top = {-1, -1.1}, right_bottom = {5, -0.9}}
+  b.orientation = 0
 
-  assert(contains(box, {4, -1}))
-  assert(not contains(box, {3, -2}))
-  assert(not contains(box, {2, -3}))
+  assert(box.contains(b, {4, -1}))
+  assert(not box.contains(b, {3, -2}))
+  assert(not box.contains(b, {2, -3}))
 
-  box.orientation = 1 / 8
-  assert(not contains(box, {4, -1}))
-  assert(contains(box, {3, -2}))
-  assert(not contains(box, {2, -3}))
+  b.orientation = 1 / 8
+  assert(not box.contains(b, {4, -1}))
+  assert(box.contains(b, {3, -2}))
+  assert(not box.contains(b, {2, -3}))
 
-  box.orientation = 1 / 4
-  assert(not contains(box, {4, -1}))
-  assert(not contains(box, {3, -2}))
-  assert(contains(box, {2, -3}))
+  b.orientation = 1 / 4
+  assert(not box.contains(b, {4, -1}))
+  assert(not box.contains(b, {3, -2}))
+  assert(box.contains(b, {2, -3}))
 end)
 
-return {
-  norm = norm,
-  new_norm = new_norm,
-  new_pack = new_pack,
-  move = move,
-  contains = contains,
-  covers = covers,
-  overlap = overlap,
-  overlap_rotated = overlap_rotated,
-  pad = pad,
-  unpack = unpack,
-  selection_diff = selection_diff
-}
+return box

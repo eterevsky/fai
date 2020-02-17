@@ -26,7 +26,7 @@ function PointSet.new(points)
     if y > maxy then maxy = y end
   end
 
-  self.box = box.new_pack(minx, miny, maxx, maxy)
+  self.box = box.Box.new(minx, miny, maxx, maxy)
 
   if #points <= 4 or (minx == maxx and miny == maxy) then
     self.points = points
@@ -65,7 +65,7 @@ end
 function PointSet:l2_dist_est(from)
   assert(from ~= nil)
   local x, y = pos.unpack(from)
-  local x1, y1, x2, y2 = box.unpack(self.box)
+  local x1, y1, x2, y2 = self.box:unpack()
 
   if x1 <= x and x <= x2 then
     if y1 <= y and y <= y2 then return 0 end
