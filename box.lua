@@ -44,6 +44,50 @@ function Box:norm()
   return {left_top = pos.norm(x1, y1), right_bottom = pos.norm(x2, y2)}
 end
 
+-- Checks whether the point is contained in the interior or on the border
+-- of the box.
+function Box:contains(p)
+  local x1, y1, x2, y2 = self:unpack()
+  local x, y = pos.unpack(p)
+  return x1 <= x and x <= x2 and y1 <= y and y <= y2
+end
+
+-- Return true if (cx, cy) and (dx, dy) are on the opposite sides of the line
+-- through points (ax, ay) and (bx, by).
+local function different_sides(ax, ay, bx, by, cx, cy, dx, dy)
+  local s1 = (bx - ax) * (cy - ay) - (cx - ax) * (by - ay)
+  local s2 = (bx - ax) * (dy - ay) - (dx - ax) * (by - ay)
+  return s1 * s2 <= 0
+end
+
+-- Checks whether the polygon intersects with the line segment from p1 to p2.
+-- If it is, then either both points lie inside, or the segment (p1, p2)
+-- has to intersect one of the polygon edges.
+function Box:intersects(p1, p2)
+  local x1, y1, x2, y2 = self:unpack()
+  local p1x, p1y = pos.unpack(p1)
+  local p2x, p2y = pos.unpack(p2)
+
+  return (x1 <= p1x and p1x <= x2 and y1 <= p1y and p1y <= y2) or
+         (x1 <= p2x and p2x <= x2 and y1 <= p2y and p2y <= y2) or
+         ((p1x - x1) * (p2x - x1) <= 0 and
+          different_sides(p1x, p1y, p2x, p2y, x1, y1, x1, y2)) or
+         ((p1x - x2) * (p2x - x2) <= 0 and
+          different_sides(p1x, p1y, p2x, p2y, x2, y1, x2, y2)) or
+         ((p1y - y1) * (p2y - y1) <= 0 and
+          different_sides(p1x, p1y, p2x, p2y, x1, y1, x2, y1))
+  -- Not checking the 4th side because if neither end of the segment lies inside
+  -- and
+end
+
+function Box:expand(b)
+  local bx1, by1, bx2, by2 = box.unpack(b)
+  local w = (bx2 - bx1) / 2
+  local h = (by2 - by1) / 2
+  local x1, y1, x2, y2 = self:unpack()
+
+  return Box.new(x1 - w, y1 - h, x2 + w, y2 + h)
+end
 
 function box.unpack(b)
   local left_top = b.left_top or b[1]
@@ -306,6 +350,41 @@ tests.register_test("box.test_contains_rotated", function()
   assert(not box.contains(b, {4, -1}))
   assert(not box.contains(b, {3, -2}))
   assert(box.contains(b, {2, -3}))
+end)
+
+tests.register_test("box.intersects", function()
+  local b = Box.new(2, 3, 7, 6)
+
+  assert(b:intersects({3, 5}, {4, 5}))
+  assert(b:intersects({4, 5}, {3, 5}))
+  assert(b:intersects({6, 5}, {6, 4}))
+  assert(b:intersects({6, 4}, {6, 5}))
+  assert(b:intersects({3, 4}, {4, 5}))
+
+  assert(b:intersects({4, 2}, {5, 4}))
+  assert(b:intersects({4, 4}, {1, 5}))
+
+  assert(b:intersects({4, 2}, {5, 7}))
+  assert(b:intersects({4, 2}, {8, 4}))
+  assert(b:intersects({1, 4}, {8, 5}))
+
+  assert(b:intersects({1, 5}, {3, 7}))
+  assert(b:intersects({7, 2}, {7, 7}))
+  assert(b:intersects({8, 5}, {6, 1}))
+
+  assert(not b:intersects({3, 1}, {5, 2}))
+  assert(not b:intersects({3, 1}, {5, 2}))
+  assert(not b:intersects({6, 7}, {10, 4}))
+end)
+
+tests.register_test("box.expand", function()
+  local b = Box.new(2, 3, 7, 6)
+  local b_exp = b:expand(Box.new(0, 0, 1, 2))
+  local ex1, ey1, ex2, ey2 = b_exp:unpack()
+  assert(ex1 == 1.5)
+  assert(ey1 == 2)
+  assert(ex2 == 7.5)
+  assert(ey2 == 7)
 end)
 
 return box
