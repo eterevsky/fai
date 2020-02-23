@@ -6,9 +6,9 @@ local controller = require "controller"
 local pos = require "pos"
 local util = require "util"
 local log = util.log
+local obstacles = require "obstacles"
 local Pathfinder = require("pathfinder").Pathfinder
 local PointSet = require("pointset").PointSet
-require "polygon"
 local tests = require "tests"
 local tile_pathfinder = require "tile_pathfinder"
 
@@ -119,7 +119,7 @@ end)
 commands.add_command("random-walk", "Walk in a random direction on each tick",
 function(args)
   controller.activate()
- 
+
   local function walk()
     local dir = controller.directions[math.random(#controller.directions)]
     controller.walk(dir)
@@ -224,3 +224,10 @@ function()
     log(dy, row)
   end
 end)
+
+-- commands.add_command("obstacles", "Draw nearby obstacles",
+-- function()
+--   controller.activate()
+--   obstacles.init(controller)
+--   obstacles.draw(controller.position())
+-- end)

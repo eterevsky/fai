@@ -59,6 +59,7 @@ function controller.character() return _player.character end
 function controller.entities(radius)
   if radius == nil then radius = 1000 end
   local bounding_box = box.pad(controller.position(), radius)
+  log("bounding box:", box.norm(bounding_box))
   return _player.surface.find_entities(bounding_box)
 end
 

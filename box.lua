@@ -21,8 +21,8 @@ function Box.new(x1_or_p1_or_b, y1_or_p2, x2, y2)
       p1 = x1_or_p1_or_b
       p2 = y1_or_p2
     else
-      p1 = box.left_top or x1_or_p1_or_b[1]
-      p2 = box.right_bottom or x1_or_p1_or_b[2]
+      p1 = x1_or_p1_or_b.left_top or x1_or_p1_or_b[1]
+      p2 = x1_or_p1_or_b.right_bottom or x1_or_p1_or_b[2]
     end
     self = {pos.pack(p1), pos.pack(p2)}
   end
@@ -89,6 +89,14 @@ function Box:expand(b)
   return Box.new(x1 - w, y1 - h, x2 + w, y2 + h)
 end
 
+-- Returns a list of normalized positions for the polygon vertices.
+function Box:norm_vertices()
+  local x1, y1, x2, y2 = self:unpack()
+
+  return {pos.norm(x1, y1), pos.norm(x2, y1), pos.norm(x2, y2), pos.norm(x1, y2)}
+end
+
+
 function box.unpack(b)
   local left_top = b.left_top or b[1]
   local right_bottom = b.right_bottom or b[2]
@@ -111,7 +119,13 @@ end
 function box.move(b, center)
   local x1, y1, x2, y2 = box.unpack(b)
   local x, y = pos.unpack(center)
-  return {pos.pack(x + x1, y + y1), pos.pack(x + x2, y + y2)}
+  if b.orientation ~= nil then
+    local moved = {pos.pack(x + x1, y + y1), pos.pack(x + x2, y + y2)}
+    moved.orientation = b.orientation
+    return moved
+  else
+    return Box.new(x + x1, y + y1, x + x2, y + y2)
+  end
 end
 
 function box.contains_rotated(b, p)

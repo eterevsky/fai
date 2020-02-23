@@ -133,7 +133,7 @@ end
 
 -- Checks the previously registered prediction of player position. Returns true
 -- if there is no registered prediction, or the prediction was correct.
--- The prediction is considered correct if it manages to guess whether there 
+-- The prediction is considered correct if it manages to guess whether there
 -- will be a collision, and if not predict the correct new position of the player.
 -- We do not predict the exact position in case there is a collision.
 function WalkSimulator:check_prediction()
@@ -155,8 +155,9 @@ function WalkSimulator:check_prediction()
       log("Actual delta:", pos.delta(self.old_pos, player_pos))
       local player_box = box.pad(player_pos, 1.0)
       for _, entity in ipairs(self.controller.entities_in_box(player_box)) do
-        local entity_box = box.move(entity.prototype.collision_box,
-                                    entity.position)
+        local entity_box = entity.bounding_box
+        -- box.move(entity.prototype.collision_box,
+        --                             entity.position)
         log(entity.name, box.norm(entity_box), entity.prototype.collision_box)
         if entity.name == "cliff" then
           log("cliff orientation: ", entity.cliff_orientation)

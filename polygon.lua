@@ -4,6 +4,7 @@
 local box = require "box"
 local pos = require "pos"
 local tests = require "tests"
+local log = require("util").log
 
 local polygon = {}
 local Polygon = {}
@@ -23,7 +24,7 @@ function Polygon.new(vertices)
   return self
 end
 
-function Polygon.from_box(b)
+function polygon.from_box(b)
   local angle = 2 * math.pi * b.orientation
   local cos = math.cos(angle)
   local sin = math.sin(angle)
@@ -33,6 +34,7 @@ function Polygon.from_box(b)
 
   -- Center of the box
   local cx, cy = (bx1 + bx2) / 2, (by1 + by2) / 2
+  log(cx, cy)
 
   local rotate = function(x, y)
     -- Vector from the center of the box to the point
@@ -40,19 +42,22 @@ function Polygon.from_box(b)
 
     -- Rotate the point into the box coordinates
     local rx, ry = cos * vx - sin * vy, sin * vx + cos * vy
+
+    local resx, resy = cx + rx, cy + ry
+
     if rx > 0 then
-      rx = math.ceil(256 * rx) / 256
+      resx = math.ceil(256 * resx) / 256
     else
-      rx = math.floor(256 * rx) / 256
+      resx = math.floor(256 * resx) / 256
     end
 
     if ry > 0 then
-      ry = math.ceil(256 * ry) / 256
+      resy = math.ceil(256 * resy) / 256
     else
-      ry = math.floor(256 * ry) / 256
+      resy = math.floor(256 * resy) / 256
     end
 
-    return pos.pack(cx + rx, cy + ry)
+    return pos.pack(resx, resy)
   end
 
   local box_poly = Polygon.new()
@@ -179,6 +184,16 @@ function Polygon:expand(b)
   return exp_poly
 end
 
+-- Returns a list of normalized positions for the polygon vertices.
+function Polygon:norm_vertices()
+  local vertices = {}
+  for _, v in ipairs(self) do
+    table.insert(vertices, pos.norm(v))
+  end
+
+  return vertices
+end
+
 tests.register_test("polygon.is_convex", function()
   assert(Polygon.new({{0, 0}, {1, 2}, {-5, -1}}):is_convex())
   assert(not Polygon.new({{0, 0}, {-5, -1}, {1, 2}}):is_convex())
@@ -272,14 +287,14 @@ tests.register_test("polygon.from_box", function()
   local b = {{1, 1}, {4, 3}}
   b.orientation = 0
 
-  local rotated0 = Polygon.from_box(b)
+  local rotated0 = polygon.from_box(b)
   assert(rotated0[1] == pos.pack(1, 1))
   assert(rotated0[2] == pos.pack(4, 1))
   assert(rotated0[3] == pos.pack(4, 3))
   assert(rotated0[4] == pos.pack(1, 3))
 
   b.orientation = 0.25
-  local rotated1 = Polygon.from_box(b)
+  local rotated1 = polygon.from_box(b)
   assert(rotated1[1] == pos.pack(3.5, 0.5))
   assert(rotated1[2] == pos.pack(3.5, 3.5))
   assert(rotated1[3] == pos.pack(1.5, 3.5))
