@@ -5,6 +5,7 @@ local box = require "box"
 local log = require("util").log
 local polygon = require "polygon"
 local pos = require "pos"
+local tests = require "tests"
 
 local obstacles = {}
 local _controller
@@ -35,7 +36,7 @@ function obstacles.init(controller)
 end
 
 -- If necessary updates and gets the block at position p. It is assumed that
--- p is *already aligned* by 4x4 grid.
+-- p is *already aligned* by 4x4 grid and packed
 function obstacles.get_block(p)
   local block = _blocks[p]
 
@@ -48,7 +49,8 @@ function obstacles.get_block(p)
 
     local px, py = pos.unpack(p)
     -- Center of the block.
-    local cx, cy = math.floor(px / 4) * 4 + 2, math.floor(py / 4) * 4 + 2
+    local cx, cy = px + 2, py + 2
+    -- local cx, cy = math.floor(px / 4) * 4 + 2, math.floor(py / 4) * 4 + 2
 
     local b = {left_top = {px - _pad[1], py - _pad[2]},
                right_bottom = {px + 4 + _pad[1], py + 4 + _pad[2]}}
@@ -92,6 +94,46 @@ function obstacles.get_block(p)
   return block
 end
 
+-- Returns the list of block, that covers the segment from p1 to p2.
+local function intersecting_blocks(p1, p2)
+  local x1, y1 = pos.unpack(p1)
+  local x2, y2 = pos.unpacl(p2)
+  local dx, dy = x2 - x1, y2 - y1
+  local blocks = {}
+
+  -- Final block
+  local bx2, by2 = math.floor(x2 / 4) * 4, math.floor(y2 / 4) * 4
+
+  while true do
+    local bx1, by1 = math.floor(x1 / 4) * 4, math.floor(y1 / 4) * 4
+    table.insert(blocks, pos.pack(bx1, by1))
+
+    if bx1 == bx2 and by1 == by2 then break end
+
+    -- Next vertical and horizontal grid lines to be intersected. Can be nil,
+    -- if (dx, dy) is horizontal/vertical.
+    local next_bx, next_by
+
+    if dx > 0 then
+      next_bx = bx1 + 1
+    elseif dx < 0 then
+      next_bx = bx1 - 1
+    end
+
+    if dy > 0 then
+      next_by = by1 + 1
+    elseif dy < 0 then
+      next_by = by1 - 1
+    end
+
+
+  end
+end
+
+-- Checks whether a segment from p1 to p2 intersects with any of the obstacles.
+function obstacles.intersects(p1, p2)
+end
+
 -- function obstacles.draw(p)
 --   local block = obstacles.get_block(p)
 
@@ -108,5 +150,18 @@ end
 --       surface = game.player.surface}
 --   end
 -- end
+
+tests.register_test("obstacles.intersecting_blocks", function()
+  local blocks = intersecting_blocks({1.125, 2.0}, {3.5, 0.123})
+  assert(#blocks == 1)
+  assert(blocks[1] == pos.pack(0, 0))
+
+  blocks = intersecting_blocks({3, 2}, {5, -3})
+  assert(#blocks == 3)
+  assert(blocks[1] == pos.pack(0, 0))
+  assert(blocks[2] == pos.pack(0, -4))
+  assert(blocks[3] == pos.pack(4, -4))
+end)
+
 
 return obstacles
