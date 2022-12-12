@@ -1,3 +1,5 @@
+-- test
+
 local tests = require "tests"
 
 -- Packed positions represent any coordinates between (-2048, -2048) and
