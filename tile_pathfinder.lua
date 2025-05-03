@@ -99,11 +99,11 @@ end
 function tile_pathfinder.TilePathfinder:_tile_passable(point)
   assert(point ~= nil)
   local tile = self.controller.get_tile(point)
-  if tile.collides_with("player-layer") then return false end
+  if tile.collides_with("player") then return false end
   local x, y = pos.unpack(point)
   local entities = self.controller.entities_filtered{
     area = {{x - 0.1, y - 0.1}, {x + 0.1, y + 0.1}},
-    collision_mask = "player-layer"
+    collision_mask = "player"
   }
   for _, entity in ipairs(entities) do
     if entity.name ~= "character" and box.contains(entity.bounding_box, point) then

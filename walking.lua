@@ -91,7 +91,7 @@ function WalkSimulator:_update_cache(player_box)
     local entity_box = entity.bounding_box
     -- log("entity ", entity.name, " ", box.norm(entity_box))
     if entity.name ~= "character" and
-        entity.prototype.collision_mask["player-layer"] then
+        entity.prototype.collision_mask["player"] then
       table.insert(self.entity_cache, entity_box)
     end
   end
@@ -106,7 +106,7 @@ function WalkSimulator:walk(from, dir)
   local new_pos = self:walk_no_collisions(from, dir)
   -- log("no collisions new_pos = ", pos.norm(new_pos))
   local new_tile = self.controller.get_tile(new_pos)
-  if new_tile.collides_with("player-layer") then
+  if new_tile.collides_with("player") then
     -- log("new_tile collide ", new_tile)
     return from
   end
